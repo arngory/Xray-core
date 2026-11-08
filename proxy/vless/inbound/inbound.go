@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xtls/xray-core/app/dispatcher"
@@ -83,6 +84,9 @@ type Handler struct {
 	ctx                    context.Context
 	fallbacks              map[string]map[string]map[string]*Fallback // or nil
 	// regexps               map[string]*regexp.Regexp       // or nil
+
+	usersMu sync.Mutex // serializes AddUser and RemoveUser
+	conns   userConns  // live connections per user, closed by RemoveUser
 }
 
 // New creates a new VLess inbound handler.
@@ -236,13 +240,25 @@ func (h *Handler) Close() error {
 
 // AddUser implements proxy.UserManager.AddUser().
 func (h *Handler) AddUser(ctx context.Context, u *protocol.MemoryUser) error {
+	h.usersMu.Lock()
+	defer h.usersMu.Unlock()
 	return h.validator.Add(u)
 }
 
 // RemoveUser implements proxy.UserManager.RemoveUser().
+// It also closes every live connection that authenticated as this user.
 func (h *Handler) RemoveUser(ctx context.Context, e string) error {
-	h.RemoveReverse(h.validator.GetByEmail(e))
-	return h.validator.Del(e)
+	h.usersMu.Lock()
+	defer h.usersMu.Unlock()
+	u := h.validator.GetByEmail(e)
+	h.RemoveReverse(u)
+	if err := h.validator.Del(e); err != nil {
+		return err
+	}
+	if n := h.conns.closeAll(u); n > 0 {
+		errors.LogInfo(ctx, "closed ", n, " connection(s) of removed user ", e)
+	}
+	return nil
 }
 
 // GetUser implements proxy.UserManager.GetUser().
@@ -536,6 +552,23 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection s
 	inbound.VlessRoute = net.PortFromBytes(userSentID[6:8])
 
 	account := request.User.Account.(*vless.MemoryAccount)
+
+	// Track the connection under its user so that RemoveUser can close it,
+	// then look the user up again: a removal that ran after the lookup in
+	// DecodeRequestHeader but before add did not see this connection, and this
+	// lookup sees that removal. Users without an email cannot be removed.
+	if request.User.Email != "" {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		rawConn, _, _ := proxy.UnwrapRawConn(connection)
+		uc := &userConn{conn: rawConn, cancel: cancel}
+		h.conns.add(request.User, uc)
+		defer h.conns.remove(request.User, uc)
+		if h.validator.Get(account.ID.UUID()) != request.User {
+			return errors.New("user ", request.User.Email, " was removed while connecting")
+		}
+	}
 
 	if account.Reverse != nil && request.Command != protocol.RequestCommandRvs {
 		return errors.New("for safety reasons, user " + account.ID.String() + " is not allowed to use forward proxy")
