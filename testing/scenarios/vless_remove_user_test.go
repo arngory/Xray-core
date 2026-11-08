@@ -2,7 +2,11 @@ package scenarios
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/mlkem"
+	"crypto/rand"
 	gotls "crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	gonet "net"
@@ -33,43 +37,82 @@ import (
 	"github.com/xtls/xray-core/proxy/vless/outbound"
 	"github.com/xtls/xray-core/testing/servers/tcp"
 	"github.com/xtls/xray-core/transport/internet"
+	"github.com/xtls/xray-core/transport/internet/reality"
 	transtcp "github.com/xtls/xray-core/transport/internet/tcp"
 	"github.com/xtls/xray-core/transport/internet/tls"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// TestVlessRemoveUserEndsVisionSplice removes a user through HandlerService
-// while it has a long-lived TLS 1.3 stream over VLESS TLS + Vision, which the
-// server forwards with splice. The stream must end at the client and at the
-// destination; another user's stream must go on.
+// The tests below remove a user through HandlerService while it has a
+// long-lived stream. The stream must end at the client and at the destination;
+// another user's stream must go on.
+
+// TestVlessRemoveUserEndsVisionSplice: VLESS TLS + Vision with a TLS 1.3
+// stream inside, which the server forwards with splice.
 func TestVlessRemoveUserEndsVisionSplice(t *testing.T) {
-	testVlessRemoveUser(t, true)
+	testVlessRemoveUser(t, removeUserCase{security: "tls", vision: true})
 }
 
-// TestVlessRemoveUserEndsMux is the same with mux and no flow or security.
+// TestVlessRemoveUserEndsMux: mux, no flow or security.
 func TestVlessRemoveUserEndsMux(t *testing.T) {
-	testVlessRemoveUser(t, false)
+	testVlessRemoveUser(t, removeUserCase{mux: true})
 }
 
-func testVlessRemoveUser(t *testing.T, vision bool) {
+// TestVlessRemoveUserEndsEncryptedVision: VLESS TLS + Vision with native
+// VLESS encryption.
+func TestVlessRemoveUserEndsEncryptedVision(t *testing.T) {
+	testVlessRemoveUser(t, removeUserCase{security: "tls", vision: true, encryption: true})
+}
+
+// TestVlessRemoveUserEndsEncryptedVisionReality: REALITY + Vision with native
+// VLESS encryption, the REALITY inbound of raycontrol. REALITY borrows the
+// handshake of a local TLS server.
+func TestVlessRemoveUserEndsEncryptedVisionReality(t *testing.T) {
+	testVlessRemoveUser(t, removeUserCase{security: "reality", vision: true, encryption: true})
+}
+
+// TestVlessRemoveUserEndsEncryptedUnix: native VLESS encryption on a unix
+// socket behind a TCP forwarder, no flow or security: the inner inbound of
+// raycontrol behind its front.
+func TestVlessRemoveUserEndsEncryptedUnix(t *testing.T) {
+	testVlessRemoveUser(t, removeUserCase{unix: true, encryption: true})
+}
+
+type removeUserCase struct {
+	security   string // "", "tls" or "reality"
+	vision     bool   // flow xtls-rprx-vision, with a TLS 1.3 stream inside
+	encryption bool   // VLESS encryption, mlkem768x25519plus.native
+	mux        bool
+	unix       bool // the server listens on a unix socket
+}
+
+func testVlessRemoveUser(t *testing.T, c removeUserCase) {
 	ct, ctHash := cert.MustGenerate(nil, cert.CommonName("localhost"))
+	certPEM, keyPEM := ct.ToPEM()
+	keyPair, err := gotls.X509KeyPair(certPEM, keyPEM)
+	common.Must(err)
+	tlsConfig := &gotls.Config{Certificates: []gotls.Certificate{keyPair}, MinVersion: gotls.VersionTLS13}
 
 	var destTLS *gotls.Config
-	if vision { // Vision only splices TLS 1.3
-		certPEM, keyPEM := ct.ToPEM()
-		keyPair, err := gotls.X509KeyPair(certPEM, keyPEM)
-		common.Must(err)
-		destTLS = &gotls.Config{Certificates: []gotls.Certificate{keyPair}, MinVersion: gotls.VersionTLS13}
+	if c.vision { // Vision only takes over TLS 1.3
+		destTLS = tlsConfig
 	}
 	destP := startStreamServer(t, destTLS)
 	destN := startStreamServer(t, destTLS)
 
 	var flow string
-	var serverStream, clientStream *internet.StreamConfig
-	var mux *proxyman.MultiplexingConfig
-	if vision {
+	if c.vision {
 		flow = vless.XRV
+	}
+	var mux *proxyman.MultiplexingConfig
+	if c.mux {
+		mux = &proxyman.MultiplexingConfig{Enabled: true, Concurrency: 8}
+	}
+
+	var serverStream, clientStream *internet.StreamConfig
+	switch c.security {
+	case "tls":
 		serverStream = &internet.StreamConfig{
 			ProtocolName: "tcp",
 			SecurityType: serial.GetMessageType(&tls.Config{}),
@@ -94,8 +137,58 @@ func testVlessRemoveUser(t *testing.T, vision bool) {
 				}),
 			},
 		}
-	} else {
-		mux = &proxyman.MultiplexingConfig{Enabled: true, Concurrency: 8}
+	case "reality":
+		privateKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+		common.Must(err)
+		shortID := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+		serverStream = &internet.StreamConfig{
+			ProtocolName: "tcp",
+			SecurityType: serial.GetMessageType(&reality.Config{}),
+			SecuritySettings: []*serial.TypedMessage{
+				serial.ToTypedMessage(&reality.Config{
+					Dest:        startTLSServer(t, tlsConfig),
+					Type:        "tcp",
+					ServerNames: []string{"localhost"},
+					PrivateKey:  privateKey.Bytes(),
+					ShortIds:    [][]byte{shortID},
+				}),
+			},
+		}
+		clientStream = &internet.StreamConfig{
+			ProtocolName: "tcp",
+			TransportSettings: []*internet.TransportConfig{
+				{
+					ProtocolName: "tcp",
+					Settings:     serial.ToTypedMessage(&transtcp.Config{}),
+				},
+			},
+			SecurityType: serial.GetMessageType(&reality.Config{}),
+			SecuritySettings: []*serial.TypedMessage{
+				serial.ToTypedMessage(&reality.Config{
+					Fingerprint: "chrome",
+					ServerName:  "localhost",
+					PublicKey:   privateKey.PublicKey().Bytes(),
+					ShortId:     shortID,
+					SpiderX:     "/",
+				}),
+			},
+		}
+	}
+
+	// "mlkem768x25519plus.native.600s.<seed>" on the server and
+	// "mlkem768x25519plus.native.0rtt.<public key>" on the client, as
+	// infra/conf parses them.
+	var decryption, encryption string
+	var secondsFrom int64
+	var seconds uint32
+	if c.encryption {
+		seed := make([]byte, mlkem.SeedSize)
+		common.Must2(rand.Read(seed))
+		key, err := mlkem.NewDecapsulationKey768(seed)
+		common.Must(err)
+		decryption = base64.RawURLEncoding.EncodeToString(seed)
+		encryption = base64.RawURLEncoding.EncodeToString(key.EncapsulationKey().Bytes())
+		secondsFrom, seconds = 600, 1
 	}
 
 	idP := protocol.NewID(uuid.New()).String()
@@ -104,6 +197,16 @@ func testVlessRemoveUser(t *testing.T, vision bool) {
 
 	cmdPort := tcp.PickPort()
 	serverPort := tcp.PickPort()
+	receiver := &proxyman.ReceiverConfig{
+		PortList:       &net.PortList{Range: []*net.PortRange{net.SinglePortRange(serverPort)}},
+		Listen:         net.NewIPOrDomain(net.LocalHostIP),
+		StreamSettings: serverStream,
+	}
+	if c.unix {
+		socket := filepath.Join(t.TempDir(), "inner.sock")
+		receiver = &proxyman.ReceiverConfig{Listen: net.NewIPOrDomain(net.DomainAddress(socket))}
+		serverPort = startForwarder(t, socket)
+	}
 	serverConfig := &core.Config{
 		App: []*serial.TypedMessage{
 			serial.ToTypedMessage(&log.Config{
@@ -128,13 +231,11 @@ func testVlessRemoveUser(t *testing.T, vision bool) {
 		},
 		Inbound: []*core.InboundHandlerConfig{
 			{
-				Tag: "vless",
-				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
-					PortList:       &net.PortList{Range: []*net.PortRange{net.SinglePortRange(serverPort)}},
-					Listen:         net.NewIPOrDomain(net.LocalHostIP),
-					StreamSettings: serverStream,
-				}),
+				Tag:              "vless",
+				ReceiverSettings: serial.ToTypedMessage(receiver),
 				ProxySettings: serial.ToTypedMessage(&inbound.Config{
+					Decryption:  decryption,
+					SecondsFrom: secondsFrom,
 					Users: []*protocol.User{
 						{
 							Email:   "u5-p",
@@ -193,7 +294,12 @@ func testVlessRemoveUser(t *testing.T, vision bool) {
 					Address: net.NewIPOrDomain(net.LocalHostIP),
 					Port:    uint32(serverPort),
 					User: &protocol.User{
-						Account: serial.ToTypedMessage(&vless.Account{Id: id, Flow: flow}),
+						Account: serial.ToTypedMessage(&vless.Account{
+							Id:         id,
+							Flow:       flow,
+							Encryption: encryption,
+							Seconds:    seconds,
+						}),
 					},
 				},
 			}),
@@ -239,14 +345,17 @@ func testVlessRemoveUser(t *testing.T, vision bool) {
 	common.Must(err)
 	defer CloseAllServers(servers)
 
-	streamP := openStream(t, clientPortP, vision)
-	streamN := openStream(t, clientPortN, vision)
+	streamP := openStream(t, clientPortP, c.vision)
+	streamN := openStream(t, clientPortN, c.vision)
 	for _, s := range []gonet.Conn{streamP, streamN} {
 		if err := readAtLeast(s, 1<<20); err != nil {
 			t.Fatal("stream does not flow: ", err)
 		}
 	}
-	if vision {
+	if c.vision {
+		waitLog(t, logPath, "XtlsFilterTls found tls 1.3")
+	}
+	if c.vision && !c.encryption { // VLESS encryption disables splice
 		waitLog(t, logPath, "CopyRawConn splice")
 	}
 
@@ -334,6 +443,58 @@ func startStreamServer(t *testing.T, config *gotls.Config) *streamServer {
 		}
 	}()
 	return s
+}
+
+// startTLSServer runs a TLS server that completes handshakes and reads until
+// the peer closes, and returns its address.
+func startTLSServer(t *testing.T, config *gotls.Config) string {
+	ln, err := gonet.Listen("tcp", "127.0.0.1:0")
+	common.Must(err)
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				if c := gotls.Server(conn, config); c.Handshake() == nil {
+					io.Copy(io.Discard, c)
+				}
+			}()
+		}
+	}()
+	return ln.Addr().String()
+}
+
+// startForwarder forwards a local TCP port to the unix socket at path, closing
+// both sides when either side ends, and returns the port.
+func startForwarder(t *testing.T, path string) net.Port {
+	ln, err := gonet.Listen("tcp", "127.0.0.1:0")
+	common.Must(err)
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				unix, err := gonet.Dial("unix", path)
+				if err != nil {
+					return
+				}
+				defer unix.Close()
+				done := make(chan struct{}, 2)
+				go func() { io.Copy(unix, conn); done <- struct{}{} }()
+				go func() { io.Copy(conn, unix); done <- struct{}{} }()
+				<-done
+			}()
+		}
+	}()
+	return net.Port(ln.Addr().(*gonet.TCPAddr).Port)
 }
 
 func openStream(t *testing.T, port net.Port, useTLS bool) gonet.Conn {

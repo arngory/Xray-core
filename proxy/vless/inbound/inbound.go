@@ -561,7 +561,11 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection s
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithCancel(ctx)
 		defer cancel()
-		rawConn, _, _ := proxy.UnwrapRawConn(connection)
+		// Unwrap the transport connection from before the decryption
+		// handshake: UnwrapRawConn stops at the TLS or REALITY connection
+		// under an encryption.CommonConn, and closing that one may wait
+		// seconds to send close_notify to a client that does not read.
+		rawConn, _, _ := proxy.UnwrapRawConn(iConn)
 		uc := &userConn{conn: rawConn, cancel: cancel}
 		h.conns.add(request.User, uc)
 		defer h.conns.remove(request.User, uc)

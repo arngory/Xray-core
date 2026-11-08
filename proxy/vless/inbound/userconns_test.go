@@ -31,8 +31,15 @@ import (
 // With hold set it ignores the client and waits for the context, like a
 // downlink splice waiting on an idle remote; only cancelling the context
 // ends it.
+// With stall set it writes to the client until a write blocks because the
+// client does not read, then makes that write fail with a write deadline,
+// closes stalled and waits for the context: the client's send buffer is full
+// and no write is in flight, as after a burst from a remote that then went
+// idle.
 type testDispatcher struct {
 	hold       bool
+	stall      bool
+	stalled    chan struct{}
 	dispatched atomic.Int32
 }
 
@@ -46,7 +53,28 @@ func (*testDispatcher) Dispatch(context.Context, net.Destination) (*transport.Li
 
 func (d *testDispatcher) DispatchLink(ctx context.Context, _ net.Destination, link *transport.Link) error {
 	d.dispatched.Add(1)
-	if d.hold {
+	if d.stall {
+		var written atomic.Int64
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			for {
+				b := buf.New()
+				b.Extend(buf.Size)
+				if link.Writer.WriteMultiBuffer(buf.MultiBuffer{b}) != nil {
+					return
+				}
+				written.Add(1)
+			}
+		}()
+		for last := int64(-1); last != written.Load(); time.Sleep(100 * time.Millisecond) {
+			last = written.Load()
+		}
+		session.InboundFromContext(ctx).Conn.SetWriteDeadline(time.Now())
+		<-done
+		close(d.stalled)
+	}
+	if d.hold || d.stall {
 		<-ctx.Done()
 		return ctx.Err()
 	}
@@ -97,7 +125,7 @@ func newHandler(v vless.Validator) *Handler {
 	return &Handler{policyManager: policy.DefaultManager{}, validator: v}
 }
 
-// serve accepts connections and handles each like the inbound worker does.
+// serve accepts TCP connections and handles each like the inbound worker does.
 // Every finished Process call sends its error to the returned channel.
 func serve(t *testing.T, h *Handler, d routing.Dispatcher) (string, <-chan error) {
 	t.Helper()
@@ -105,7 +133,18 @@ func serve(t *testing.T, h *Handler, d routing.Dispatcher) (string, <-chan error
 	if err != nil {
 		t.Fatal(err)
 	}
+	return ln.Addr().String(), serveOn(t, h, d, ln, nil)
+}
+
+// serveOn is serve on ln. If wrap is not nil, it adds the server side of the
+// transport security to each accepted connection, as the transport listener
+// does.
+func serveOn(t *testing.T, h *Handler, d routing.Dispatcher, ln gonet.Listener, wrap func(gonet.Conn) (gonet.Conn, error)) <-chan error {
 	t.Cleanup(func() { ln.Close() })
+	network := net.Network_TCP
+	if ln.Addr().Network() == "unix" {
+		network = net.Network_UNIX
+	}
 	results := make(chan error, 1024)
 	go func() {
 		for {
@@ -114,16 +153,24 @@ func serve(t *testing.T, h *Handler, d routing.Dispatcher) (string, <-chan error
 				return
 			}
 			go func() {
+				if wrap != nil {
+					raw := conn
+					if conn, err = wrap(raw); err != nil {
+						raw.Close()
+						results <- err
+						return
+					}
+				}
 				ctx, cancel := context.WithCancel(context.Background())
 				ctx = session.ContextWithInbound(ctx, &session.Inbound{Tag: "test", Conn: conn})
-				err := h.Process(ctx, net.Network_TCP, conn, d)
+				err := h.Process(ctx, network, conn, d)
 				cancel()
 				conn.Close()
 				results <- err
 			}()
 		}
 	}()
-	return ln.Addr().String(), results
+	return results
 }
 
 func request(u *protocol.MemoryUser) *protocol.RequestHeader {
@@ -136,9 +183,20 @@ func request(u *protocol.MemoryUser) *protocol.RequestHeader {
 	}
 }
 
-// dial opens a connection and sends the request header of user u.
+// dialFunc opens a client connection ready for the VLESS request header.
+type dialFunc func() (gonet.Conn, error)
+
+func tcpDialer(addr string) dialFunc {
+	return func() (gonet.Conn, error) { return gonet.Dial("tcp", addr) }
+}
+
+// dial opens a TCP connection and sends the request header of user u.
 func dial(addr string, u *protocol.MemoryUser) (gonet.Conn, error) {
-	conn, err := gonet.Dial("tcp", addr)
+	return dialWith(tcpDialer(addr), u)
+}
+
+func dialWith(dial dialFunc, u *protocol.MemoryUser) (gonet.Conn, error) {
+	conn, err := dial()
 	if err != nil {
 		return nil, err
 	}
@@ -149,9 +207,13 @@ func dial(addr string, u *protocol.MemoryUser) (gonet.Conn, error) {
 	return conn, nil
 }
 
-// connect opens a connection as user u and completes one echo round trip.
+// connect opens a TCP connection as user u and completes one echo round trip.
 func connect(addr string, u *protocol.MemoryUser) (gonet.Conn, error) {
-	conn, err := dial(addr, u)
+	return connectWith(tcpDialer(addr), u)
+}
+
+func connectWith(dial dialFunc, u *protocol.MemoryUser) (gonet.Conn, error) {
+	conn, err := dialWith(dial, u)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +236,12 @@ func connect(addr string, u *protocol.MemoryUser) (gonet.Conn, error) {
 
 func mustConnect(t *testing.T, addr string, u *protocol.MemoryUser) gonet.Conn {
 	t.Helper()
-	conn, err := connect(addr, u)
+	return mustConnectWith(t, tcpDialer(addr), u)
+}
+
+func mustConnectWith(t *testing.T, dial dialFunc, u *protocol.MemoryUser) gonet.Conn {
+	t.Helper()
+	conn, err := connectWith(dial, u)
 	if err != nil {
 		t.Fatal("connect as ", u.Email, ": ", err)
 	}
