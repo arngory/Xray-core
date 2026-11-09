@@ -162,15 +162,20 @@ func (s *UDPSession) Send(to netip.AddrPort) bool {
 	to = netip.AddrPortFrom(to.Addr().Unmap(), to.Port())
 	s.mu.Lock()
 	// A pair whose time ran out is a new one, as conntrack's entry is.
-	if t, ok := s.pairs[to]; ok && now < t.end() {
-		t.sent, t.any, t.refused = now, now, false
+	t, ok := s.pairs[to]
+	known := ok && now < t.end()
+	if known && !t.refused {
+		t.sent, t.any = now, now
 		s.pairs[to] = t
 		s.mu.Unlock()
 		return true
 	}
 	s.mu.Unlock()
 	// Not under s.mu: the limiter ages the user's sessions under its own lock.
-	if !s.l.newPair(s) {
+	// A pair the kernel refused is not counted: the packet that would make
+	// it a conntrack entry is a new pair, within the user's pairs and the
+	// process's ceiling, but its destination is paid for already.
+	if !s.l.newPair(s, known) {
 		return false
 	}
 	s.mu.Lock()
@@ -200,8 +205,9 @@ func (s *UDPSession) Heard(from netip.AddrPort) {
 }
 
 // Unsent notes that the kernel refused the packet just sent to a
-// destination: its pair is no conntrack entry, and is not counted until a
-// packet goes through.
+// destination: its pair is no conntrack entry, and is not counted (from
+// the user's next recount, within ageEvery) until a packet goes through,
+// which Send admits as a new pair.
 func (s *UDPSession) Unsent(to netip.AddrPort) {
 	if !s.paired {
 		return
@@ -250,9 +256,9 @@ func (s *UDPSession) age(now int64) int {
 }
 
 // newPair admits a session's new pair: within the user's pairs, the
-// process's ceiling, and a token for a new destination (the session's
-// first is paid for). A refusal is counted.
-func (l *Limiter) newPair(s *UDPSession) bool {
+// process's ceiling, and a token for a new destination unless paid (the
+// session's first is paid for). A refusal is counted.
+func (l *Limiter) newPair(s *UDPSession, paid bool) bool {
 	r := l.r
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -289,7 +295,7 @@ func (l *Limiter) newPair(s *UDPSession) bool {
 	}
 	if s.free {
 		s.free = false
-	} else if !u.dests.take(now, l.c.UDPRate, l.c.UDPBurst) {
+	} else if !paid && !u.dests.take(now, l.c.UDPRate, l.c.UDPBurst) {
 		l.refuseLocked(u, s.name, kindDest)
 		return false
 	}
