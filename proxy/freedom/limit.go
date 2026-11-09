@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/xtls/xray-core/common/connlimit"
+	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/retry"
 	"github.com/xtls/xray-core/common/signal"
@@ -215,4 +216,15 @@ func (w *PacketWriter) limitLookup() bool {
 		w.ResolvedUDPAddr.Clear()
 	}
 	return true
+}
+
+// droppedEPERM logs, at debug and once a session, that the kernel refused
+// a packet of the session and it was dropped: the conntrack guard or the
+// egress policy (upstream ended the session there, and logged that at
+// info). Neither the user nor the destination is said.
+func (w *PacketWriter) droppedEPERM() {
+	if !w.epermLogged {
+		w.epermLogged = true
+		errors.LogDebug(context.Background(), "a UDP packet was dropped: the kernel refused it (EPERM); the session goes on")
+	}
 }

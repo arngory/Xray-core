@@ -86,7 +86,8 @@ Hooks in upstream's files:
   - `PacketWriter.WriteMultiBuffer`: `w.limitLookup()` before a name is looked up;
   - **always**, limits or not: in `PacketWriter.WriteMultiBuffer`, EPERM from the socket drops the packet instead of
     ending the session. The node's conntrack guard and egress policy reject a packet with an ICMP error the socket
-    sees as EPERM; upstream ended the whole UDP session on it.
+    sees as EPERM; upstream ended the whole UDP session on it. The drop is logged at debug, once a session, without
+    the destination (the `epermLogged` field of `PacketWriter`).
 
   The UDP pairs need no hook: `limit.go` puts its own `net.PacketConn` inside the `PacketConnWrapper` the dialer
   returns, and `PacketWriter` and `PacketReader` send and receive through it.
