@@ -215,8 +215,11 @@ func TestTCPPlace(t *testing.T) {
 }
 
 // A connection to a destination freedom blackholes gives its place back
-// before the blackhole holds it for its 30 s.
+// before the blackhole holds it for its 30 s, and gives it back once: when
+// it ends, the user has its limit of places, no more.
 func TestPlaceBackBeforeBlackhole(t *testing.T) {
+	// allowed is a connection to a destination not blocked, which takes the
+	// user's only place.
 	allowed := func(lt *limitTest, network net.Network) {
 		t.Helper()
 		pd := newPipeDialer()
@@ -230,16 +233,33 @@ func TestPlaceBackBeforeBlackhole(t *testing.T) {
 		}
 		lt.counts(map[string]int64{})
 	}
+	// ended ends the blackholed connection; the user's only place is still
+	// taken.
+	ended := func(lt *limitTest, network net.Network, hole *call, kind string) {
+		t.Helper()
+		hole.up.Close()
+		hole.wait(t, 5*time.Second)
+		d := newPipeDialer()
+		err := lt.start("u5", net.Destination{Network: network, Address: net.ParseAddress("203.0.113.1"), Port: 443}, d, paid).wait(t, 5*time.Second)
+		if errors.Cause(err) != connlimit.ErrLimit || d.count() != 0 {
+			t.Fatal(network, ": past the limit after the blackholed connection ended: ", err)
+		}
+		lt.counts(map[string]int64{"u5/" + kind: 1})
+	}
 	// Blocked by its address, before any dial.
-	for _, network := range []net.Network{net.Network_TCP, net.Network_UDP} {
+	for _, c := range []struct {
+		network net.Network
+		kind    string
+	}{{net.Network_TCP, "tcp"}, {net.Network_UDP, "udp"}} {
 		lt := newLimitTest(t, &connlimit.Config{Connections: 1, UDPSessions: 1})
 		pd := newPipeDialer()
-		hole := lt.start("u5", net.Destination{Network: network, Address: net.ParseAddress("203.0.113.1"), Port: 9}, pd, paid)
+		hole := lt.start("u5", net.Destination{Network: c.network, Address: net.ParseAddress("203.0.113.1"), Port: 9}, pd, paid)
 		hole.running(t) // in the blackhole
 		if pd.count() != 0 {
-			t.Fatal(network, ": a blocked destination was dialed")
+			t.Fatal(c.network, ": a blocked destination was dialed")
 		}
-		allowed(lt, network)
+		allowed(lt, c.network)
+		ended(lt, c.network, hole, c.kind)
 	}
 
 	// Blocked by where its name led the dial: after the connection.
@@ -257,6 +277,7 @@ func TestPlaceBackBeforeBlackhole(t *testing.T) {
 		t.Fatal("dials: ", d.count())
 	}
 	allowed(lt, net.Network_TCP)
+	ended(lt, net.Network_TCP, hole, "tcp")
 }
 
 // connTo is a connection that says where it leads.

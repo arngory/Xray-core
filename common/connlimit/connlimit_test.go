@@ -471,9 +471,11 @@ func TestSweep(t *testing.T) {
 }
 
 // Counters set while refusals are counted, and limits used from many
-// goroutines: for the race detector.
+// goroutines: for the race detector. When all is done, nothing is held:
+// every place is back, and once the pairs and buckets have aged, the users
+// are forgotten and the process counts no pairs.
 func TestConcurrent(t *testing.T) {
-	r := NewRegistry()
+	r, f := newFake(t)
 	l := r.Limiter(Config{Connections: 4, Rate: 1000, Burst: 50, FailedRate: 100, FailedBurst: 5,
 		UDPSessions: 4, UDPRate: 1000, UDPBurst: 50, UDPLive: 16, LookupRate: 100, LookupBurst: 5})
 	var refused sync.Map
@@ -518,6 +520,22 @@ func TestConcurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(l.users) == 0 {
+		t.Fatal("no users: the test tests nothing")
+	}
+	for name, u := range l.users {
+		if u.tcp != 0 || len(u.sessions) != 0 {
+			t.Errorf("%s holds %d TCP places and %d sessions", name, u.tcp, len(u.sessions))
+		}
+	}
+	f.advance(time.Hour)
+	l.sweepLocked(r.now())
+	if len(l.users) != 0 || r.pairs != 0 || r.withPairs != 0 {
+		t.Errorf("after an hour: %d users, %d pairs, %d users with pairs", len(l.users), r.pairs, r.withPairs)
+	}
 }
 
 type atomicCounter struct {
