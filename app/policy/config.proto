@@ -30,9 +30,38 @@ message Policy {
     int32 connection = 1;
   }
 
+  // Limits of the new connections of each user of the level, by the base
+  // name of its email (fork: common/connlimit, FORK.md). Zero turns a limit
+  // off; without the message there are none.
+  message Limits {
+    // TCP connections at once, dials in flight included.
+    uint32 connections = 1;
+    // TCP dials: tokens a second, and at most.
+    uint32 rate = 2;
+    uint32 burst = 3;
+    // Failed TCP dials, paid into debt.
+    uint32 failed_rate = 4;
+    uint32 failed_burst = 5;
+    // UDP sessions at once.
+    uint32 udp_sessions = 6;
+    // New UDP destinations.
+    uint32 udp_rate = 7;
+    uint32 udp_burst = 8;
+    // UDP pairs (local port, destination) that conntrack still keeps.
+    uint32 udp_live = 9;
+    // Lookups of names in UDP packets.
+    uint32 lookup_rate = 10;
+    uint32 lookup_burst = 11;
+    // An email ending in one of these is limited as the email without it.
+    repeated string fold_suffixes = 12;
+    // An email is limited as its part before the first of this.
+    string fold_at = 13;
+  }
+
   Timeout timeout = 1;
   Stats stats = 2;
   Buffer buffer = 3;
+  Limits limits = 4;
 }
 
 message SystemPolicy {

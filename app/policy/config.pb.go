@@ -70,6 +70,7 @@ type Policy struct {
 	Timeout       *Policy_Timeout        `protobuf:"bytes,1,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	Stats         *Policy_Stats          `protobuf:"bytes,2,opt,name=stats,proto3" json:"stats,omitempty"`
 	Buffer        *Policy_Buffer         `protobuf:"bytes,3,opt,name=buffer,proto3" json:"buffer,omitempty"`
+	Limits        *Policy_Limits         `protobuf:"bytes,4,opt,name=limits,proto3" json:"limits,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -121,6 +122,13 @@ func (x *Policy) GetStats() *Policy_Stats {
 func (x *Policy) GetBuffer() *Policy_Buffer {
 	if x != nil {
 		return x.Buffer
+	}
+	return nil
+}
+
+func (x *Policy) GetLimits() *Policy_Limits {
+	if x != nil {
+		return x.Limits
 	}
 	return nil
 }
@@ -395,6 +403,158 @@ func (x *Policy_Buffer) GetConnection() int32 {
 	return 0
 }
 
+// Limits of the new connections of each user of the level, by the base
+// name of its email (fork: common/connlimit, FORK.md). Zero turns a limit
+// off; without the message there are none.
+type Policy_Limits struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// TCP connections at once, dials in flight included.
+	Connections uint32 `protobuf:"varint,1,opt,name=connections,proto3" json:"connections,omitempty"`
+	// TCP dials: tokens a second, and at most.
+	Rate  uint32 `protobuf:"varint,2,opt,name=rate,proto3" json:"rate,omitempty"`
+	Burst uint32 `protobuf:"varint,3,opt,name=burst,proto3" json:"burst,omitempty"`
+	// Failed TCP dials, paid into debt.
+	FailedRate  uint32 `protobuf:"varint,4,opt,name=failed_rate,json=failedRate,proto3" json:"failed_rate,omitempty"`
+	FailedBurst uint32 `protobuf:"varint,5,opt,name=failed_burst,json=failedBurst,proto3" json:"failed_burst,omitempty"`
+	// UDP sessions at once.
+	UdpSessions uint32 `protobuf:"varint,6,opt,name=udp_sessions,json=udpSessions,proto3" json:"udp_sessions,omitempty"`
+	// New UDP destinations.
+	UdpRate  uint32 `protobuf:"varint,7,opt,name=udp_rate,json=udpRate,proto3" json:"udp_rate,omitempty"`
+	UdpBurst uint32 `protobuf:"varint,8,opt,name=udp_burst,json=udpBurst,proto3" json:"udp_burst,omitempty"`
+	// UDP pairs (local port, destination) that conntrack still keeps.
+	UdpLive uint32 `protobuf:"varint,9,opt,name=udp_live,json=udpLive,proto3" json:"udp_live,omitempty"`
+	// Lookups of names in UDP packets.
+	LookupRate  uint32 `protobuf:"varint,10,opt,name=lookup_rate,json=lookupRate,proto3" json:"lookup_rate,omitempty"`
+	LookupBurst uint32 `protobuf:"varint,11,opt,name=lookup_burst,json=lookupBurst,proto3" json:"lookup_burst,omitempty"`
+	// An email ending in one of these is limited as the email without it.
+	FoldSuffixes []string `protobuf:"bytes,12,rep,name=fold_suffixes,json=foldSuffixes,proto3" json:"fold_suffixes,omitempty"`
+	// An email is limited as its part before the first of this.
+	FoldAt        string `protobuf:"bytes,13,opt,name=fold_at,json=foldAt,proto3" json:"fold_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Policy_Limits) Reset() {
+	*x = Policy_Limits{}
+	mi := &file_app_policy_config_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Policy_Limits) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Policy_Limits) ProtoMessage() {}
+
+func (x *Policy_Limits) ProtoReflect() protoreflect.Message {
+	mi := &file_app_policy_config_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Policy_Limits.ProtoReflect.Descriptor instead.
+func (*Policy_Limits) Descriptor() ([]byte, []int) {
+	return file_app_policy_config_proto_rawDescGZIP(), []int{1, 3}
+}
+
+func (x *Policy_Limits) GetConnections() uint32 {
+	if x != nil {
+		return x.Connections
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetRate() uint32 {
+	if x != nil {
+		return x.Rate
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetBurst() uint32 {
+	if x != nil {
+		return x.Burst
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetFailedRate() uint32 {
+	if x != nil {
+		return x.FailedRate
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetFailedBurst() uint32 {
+	if x != nil {
+		return x.FailedBurst
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetUdpSessions() uint32 {
+	if x != nil {
+		return x.UdpSessions
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetUdpRate() uint32 {
+	if x != nil {
+		return x.UdpRate
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetUdpBurst() uint32 {
+	if x != nil {
+		return x.UdpBurst
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetUdpLive() uint32 {
+	if x != nil {
+		return x.UdpLive
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetLookupRate() uint32 {
+	if x != nil {
+		return x.LookupRate
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetLookupBurst() uint32 {
+	if x != nil {
+		return x.LookupBurst
+	}
+	return 0
+}
+
+func (x *Policy_Limits) GetFoldSuffixes() []string {
+	if x != nil {
+		return x.FoldSuffixes
+	}
+	return nil
+}
+
+func (x *Policy_Limits) GetFoldAt() string {
+	if x != nil {
+		return x.FoldAt
+	}
+	return ""
+}
+
 type SystemPolicy_Stats struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	InboundUplink    bool                   `protobuf:"varint,1,opt,name=inbound_uplink,json=inboundUplink,proto3" json:"inbound_uplink,omitempty"`
@@ -407,7 +567,7 @@ type SystemPolicy_Stats struct {
 
 func (x *SystemPolicy_Stats) Reset() {
 	*x = SystemPolicy_Stats{}
-	mi := &file_app_policy_config_proto_msgTypes[7]
+	mi := &file_app_policy_config_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -419,7 +579,7 @@ func (x *SystemPolicy_Stats) String() string {
 func (*SystemPolicy_Stats) ProtoMessage() {}
 
 func (x *SystemPolicy_Stats) ProtoReflect() protoreflect.Message {
-	mi := &file_app_policy_config_proto_msgTypes[7]
+	mi := &file_app_policy_config_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -469,11 +629,12 @@ const file_app_policy_config_proto_rawDesc = "" +
 	"\n" +
 	"\x17app/policy/config.proto\x12\x0fxray.app.policy\"\x1e\n" +
 	"\x06Second\x12\x14\n" +
-	"\x05value\x18\x01 \x01(\rR\x05value\"\xc7\x04\n" +
+	"\x05value\x18\x01 \x01(\rR\x05value\"\x92\b\n" +
 	"\x06Policy\x129\n" +
 	"\atimeout\x18\x01 \x01(\v2\x1f.xray.app.policy.Policy.TimeoutR\atimeout\x123\n" +
 	"\x05stats\x18\x02 \x01(\v2\x1d.xray.app.policy.Policy.StatsR\x05stats\x126\n" +
-	"\x06buffer\x18\x03 \x01(\v2\x1e.xray.app.policy.Policy.BufferR\x06buffer\x1a\xfa\x01\n" +
+	"\x06buffer\x18\x03 \x01(\v2\x1e.xray.app.policy.Policy.BufferR\x06buffer\x126\n" +
+	"\x06limits\x18\x04 \x01(\v2\x1e.xray.app.policy.Policy.LimitsR\x06limits\x1a\xfa\x01\n" +
 	"\aTimeout\x125\n" +
 	"\thandshake\x18\x01 \x01(\v2\x17.xray.app.policy.SecondR\thandshake\x12@\n" +
 	"\x0fconnection_idle\x18\x02 \x01(\v2\x17.xray.app.policy.SecondR\x0econnectionIdle\x128\n" +
@@ -489,7 +650,24 @@ const file_app_policy_config_proto_rawDesc = "" +
 	"\x06Buffer\x12\x1e\n" +
 	"\n" +
 	"connection\x18\x01 \x01(\x05R\n" +
-	"connection\"\xfb\x01\n" +
+	"connection\x1a\x90\x03\n" +
+	"\x06Limits\x12 \n" +
+	"\vconnections\x18\x01 \x01(\rR\vconnections\x12\x12\n" +
+	"\x04rate\x18\x02 \x01(\rR\x04rate\x12\x14\n" +
+	"\x05burst\x18\x03 \x01(\rR\x05burst\x12\x1f\n" +
+	"\vfailed_rate\x18\x04 \x01(\rR\n" +
+	"failedRate\x12!\n" +
+	"\ffailed_burst\x18\x05 \x01(\rR\vfailedBurst\x12!\n" +
+	"\fudp_sessions\x18\x06 \x01(\rR\vudpSessions\x12\x19\n" +
+	"\budp_rate\x18\a \x01(\rR\audpRate\x12\x1b\n" +
+	"\tudp_burst\x18\b \x01(\rR\budpBurst\x12\x19\n" +
+	"\budp_live\x18\t \x01(\rR\audpLive\x12\x1f\n" +
+	"\vlookup_rate\x18\n" +
+	" \x01(\rR\n" +
+	"lookupRate\x12!\n" +
+	"\flookup_burst\x18\v \x01(\rR\vlookupBurst\x12#\n" +
+	"\rfold_suffixes\x18\f \x03(\tR\ffoldSuffixes\x12\x17\n" +
+	"\afold_at\x18\r \x01(\tR\x06foldAt\"\xfb\x01\n" +
 	"\fSystemPolicy\x129\n" +
 	"\x05stats\x18\x01 \x01(\v2#.xray.app.policy.SystemPolicy.StatsR\x05stats\x1a\xaf\x01\n" +
 	"\x05Stats\x12%\n" +
@@ -518,7 +696,7 @@ func file_app_policy_config_proto_rawDescGZIP() []byte {
 	return file_app_policy_config_proto_rawDescData
 }
 
-var file_app_policy_config_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_app_policy_config_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_app_policy_config_proto_goTypes = []any{
 	(*Second)(nil),             // 0: xray.app.policy.Second
 	(*Policy)(nil),             // 1: xray.app.policy.Policy
@@ -527,26 +705,28 @@ var file_app_policy_config_proto_goTypes = []any{
 	(*Policy_Timeout)(nil),     // 4: xray.app.policy.Policy.Timeout
 	(*Policy_Stats)(nil),       // 5: xray.app.policy.Policy.Stats
 	(*Policy_Buffer)(nil),      // 6: xray.app.policy.Policy.Buffer
-	(*SystemPolicy_Stats)(nil), // 7: xray.app.policy.SystemPolicy.Stats
-	nil,                        // 8: xray.app.policy.Config.LevelEntry
+	(*Policy_Limits)(nil),      // 7: xray.app.policy.Policy.Limits
+	(*SystemPolicy_Stats)(nil), // 8: xray.app.policy.SystemPolicy.Stats
+	nil,                        // 9: xray.app.policy.Config.LevelEntry
 }
 var file_app_policy_config_proto_depIdxs = []int32{
 	4,  // 0: xray.app.policy.Policy.timeout:type_name -> xray.app.policy.Policy.Timeout
 	5,  // 1: xray.app.policy.Policy.stats:type_name -> xray.app.policy.Policy.Stats
 	6,  // 2: xray.app.policy.Policy.buffer:type_name -> xray.app.policy.Policy.Buffer
-	7,  // 3: xray.app.policy.SystemPolicy.stats:type_name -> xray.app.policy.SystemPolicy.Stats
-	8,  // 4: xray.app.policy.Config.level:type_name -> xray.app.policy.Config.LevelEntry
-	2,  // 5: xray.app.policy.Config.system:type_name -> xray.app.policy.SystemPolicy
-	0,  // 6: xray.app.policy.Policy.Timeout.handshake:type_name -> xray.app.policy.Second
-	0,  // 7: xray.app.policy.Policy.Timeout.connection_idle:type_name -> xray.app.policy.Second
-	0,  // 8: xray.app.policy.Policy.Timeout.uplink_only:type_name -> xray.app.policy.Second
-	0,  // 9: xray.app.policy.Policy.Timeout.downlink_only:type_name -> xray.app.policy.Second
-	1,  // 10: xray.app.policy.Config.LevelEntry.value:type_name -> xray.app.policy.Policy
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	7,  // 3: xray.app.policy.Policy.limits:type_name -> xray.app.policy.Policy.Limits
+	8,  // 4: xray.app.policy.SystemPolicy.stats:type_name -> xray.app.policy.SystemPolicy.Stats
+	9,  // 5: xray.app.policy.Config.level:type_name -> xray.app.policy.Config.LevelEntry
+	2,  // 6: xray.app.policy.Config.system:type_name -> xray.app.policy.SystemPolicy
+	0,  // 7: xray.app.policy.Policy.Timeout.handshake:type_name -> xray.app.policy.Second
+	0,  // 8: xray.app.policy.Policy.Timeout.connection_idle:type_name -> xray.app.policy.Second
+	0,  // 9: xray.app.policy.Policy.Timeout.uplink_only:type_name -> xray.app.policy.Second
+	0,  // 10: xray.app.policy.Policy.Timeout.downlink_only:type_name -> xray.app.policy.Second
+	1,  // 11: xray.app.policy.Config.LevelEntry.value:type_name -> xray.app.policy.Policy
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_app_policy_config_proto_init() }
@@ -560,7 +740,7 @@ func file_app_policy_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_app_policy_config_proto_rawDesc), len(file_app_policy_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
