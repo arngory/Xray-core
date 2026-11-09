@@ -613,6 +613,8 @@ type PacketWriter struct {
 	// So, cache and keep the resolve result
 	ResolvedUDPAddr *utils.TypedSyncMap[string, net.Address]
 	OutGateway      net.Address
+
+	epermLogged bool // fork: limit.go, droppedEPERM
 }
 
 func (w *PacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
@@ -682,6 +684,7 @@ func (w *PacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 		b.Release()
 		if err != nil {
 			if connlimit.IsEPERM(err) { // fork: EPERM is a packet the kernel dropped, the session lives
+				w.droppedEPERM()
 				continue
 			}
 			buf.ReleaseMulti(mb)
