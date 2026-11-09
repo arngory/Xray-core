@@ -12,13 +12,13 @@ import (
 // FORK.md). The process has one registry; a level with "limits" has a
 // limiter in it, a level without has none.
 
-// newLimits makes the limiters of the levels that have limits; nil when
-// none has.
+// newLimits makes the limiters of the levels that have limits, any of
+// their numbers on; nil when none has.
 func newLimits(ctx context.Context, config *Config) map[uint32]*connlimit.Limiter {
 	var registry *connlimit.Registry
 	var limits map[uint32]*connlimit.Limiter
 	for level, p := range config.Level {
-		if p.GetLimits() == nil {
+		if p.GetLimits() == nil || p.Limits.toConnLimit().Off() {
 			continue
 		}
 		if registry == nil {

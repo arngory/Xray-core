@@ -41,8 +41,10 @@ set), per policy level, in one registry per process:
 | `lookupRate`, `lookupBurst` | lookups of names in UDP packets | `lookup` |
 | `foldAt`, `foldSuffixes` | how an email becomes the base name: cut at the first `foldAt`; an ending in `foldSuffixes` cut off | |
 
-A number left out or zero turns its limit off. A user without an email has no limits (nothing to key them by), nor has
-a connection without a user.
+A number left out or zero turns its limit off. With every number zero (`"limits": {}`) the level has no limiter, and a
+network none of whose limits is on takes upstream's path: with only UDP limits, TCP's dial loop is upstream's (five
+dials whatever the error), and the other way round. A user without an email has no limits (nothing to key them by),
+nor has a connection without a user.
 
 Refusals are counted in the stats app, each counter made at its first refusal: `user>>>BASENAME>>>limit>>>KIND`
 (`user>>>u5>>>limit>>>tcp`), read like the traffic counters: `StatsService.QueryStats{pattern: "user>>>"}`. They need

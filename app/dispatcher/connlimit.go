@@ -25,7 +25,7 @@ func (d *DefaultDispatcher) admit(ctx context.Context, link *transport.Link, net
 		return ctx, true
 	}
 	lim, name := connlimit.FromContext(ctx, d.policy)
-	if lim == nil {
+	if lim == nil || !lim.Limits(network == net.Network_UDP) {
 		return ctx, true
 	}
 	if err := lim.Admit(ctx, name, network == net.Network_UDP); err != nil {

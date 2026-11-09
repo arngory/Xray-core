@@ -95,6 +95,21 @@ func TestAdmit(t *testing.T) {
 			t.Fatal("a policy without limits: admitted ", ok)
 		}
 	}
+	// A network without limits of its own is not limited: nothing paid,
+	// and freedom takes it upstream's way.
+	udpOnly := &DefaultDispatcher{policy: &limitPolicy{lim: r.Limiter(connlimit.Config{UDPSessions: 1})}}
+	tcpOnly := &DefaultDispatcher{policy: &limitPolicy{lim: r.Limiter(connlimit.Config{Connections: 1})}}
+	for _, c := range []struct {
+		d       *DefaultDispatcher
+		network net.Network
+	}{{udpOnly, net.Network_TCP}, {tcpOnly, net.Network_UDP}} {
+		if out, ok := c.d.admit(user("u5"), &transport.Link{}, c.network); !ok || connlimit.PaidFromContext(out) {
+			t.Fatal(c.network, " without limits of its own: admitted ", ok, ", paid ", connlimit.PaidFromContext(out))
+		}
+	}
+	if out, ok := udpOnly.admit(user("u5"), &transport.Link{}, net.Network_UDP); !ok || !connlimit.PaidFromContext(out) {
+		t.Fatal("UDP with limits of its own: not paid")
+	}
 	if len(refused) != 2 || refused["u5/rate"] != 1 || refused["u5/dest"] != 1 {
 		t.Fatal("refused: ", refused)
 	}

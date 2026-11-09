@@ -36,8 +36,8 @@ type limitLease struct {
 // the dialer. connlimit.ErrLimit when the user has no place for it.
 func (h *Handler) limit(ctx context.Context, network net.Network, dialer *internet.Dialer) (*limitLease, error) {
 	lim, name := connlimit.FromContext(ctx, h.policyManager)
-	if lim == nil {
-		return nil, nil
+	if lim == nil || (network != net.Network_TCP && network != net.Network_UDP) || !lim.Limits(network == net.Network_UDP) {
+		return nil, nil // upstream's way: none of the network's limits is on
 	}
 	paid := connlimit.PaidFromContext(ctx)
 	l := &limitLease{ctx: ctx}
@@ -52,8 +52,6 @@ func (h *Handler) limit(ctx context.Context, network net.Network, dialer *intern
 		l.tcp, err = lim.TCP(name)
 	case net.Network_UDP:
 		l.udp, err = lim.UDP(name, paid)
-	default:
-		return nil, nil
 	}
 	if err != nil {
 		return nil, err

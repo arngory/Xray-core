@@ -60,12 +60,17 @@ func TestLimitsByLevel(t *testing.T) {
 		}
 	}
 
-	m, err = New(context.Background(), &Config{Level: map[uint32]*Policy{0: {}}})
+	// "limits" with every number zero (how emails fold is no limit) is no
+	// limits.
+	m, err = New(context.Background(), &Config{Level: map[uint32]*Policy{0: {}, 1: {Limits: &Policy_Limits{}},
+		2: {Limits: &Policy_Limits{FoldAt: "-", FoldSuffixes: []string{"-n"}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.ConnLimits(0) != nil {
-		t.Fatal("a limiter without limits")
+	for level := range uint32(3) {
+		if m.ConnLimits(level) != nil {
+			t.Fatal("a limiter without limits, level ", level)
+		}
 	}
 	if l, _ := connlimit.FromContext(userContext("u5", 0), m); l != nil {
 		t.Fatal("limited without limits")
