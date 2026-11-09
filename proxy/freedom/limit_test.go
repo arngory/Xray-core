@@ -16,6 +16,7 @@ import (
 	"github.com/xtls/xray-core/common/connlimit"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
+	"github.com/xtls/xray-core/common/retry"
 	"github.com/xtls/xray-core/features/dns"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/stat"
@@ -24,14 +25,20 @@ import (
 // Without limits the dial loop is upstream's: five dials whatever the
 // error, and the dialer is the outbound's own.
 func TestNoLimitsDialLoopIsUpstreams(t *testing.T) {
-	for _, errno := range []syscall.Errno{syscall.ECONNREFUSED, syscall.EPERM} {
-		lt := newLimitTest(t, nil)
-		d := failWith(dialError(errno))
-		if err := lt.start("u5", tcpDest, d).wait(t, 5*time.Second); err == nil {
-			t.Fatal(errno, ": no error")
-		}
-		if d.count() != 5 {
-			t.Error(errno, ": dials without limits: ", d.count(), ", want 5")
+	// No limits; limits all zero; limits of UDP only, which leave TCP as it
+	// was.
+	for _, limits := range []*connlimit.Config{nil, {}, {FoldAt: "-"}, {UDPSessions: 1, UDPRate: 1, UDPBurst: 1, UDPLive: 1, LookupRate: 1}} {
+		for _, errno := range []syscall.Errno{syscall.ECONNREFUSED, syscall.EPERM} {
+			lt := newLimitTest(t, limits)
+			d := failWith(dialError(errno))
+			err := lt.start("u5-0123456789abcdef", tcpDest, d).wait(t, 5*time.Second)
+			if !goerrors.Is(err, retry.ErrRetryFailed) {
+				t.Error(limits, errno, ": not upstream's error: ", err)
+			}
+			if d.count() != 5 {
+				t.Error(limits, errno, ": dials without limits of TCP: ", d.count(), ", want 5")
+			}
+			lt.counts(map[string]int64{})
 		}
 	}
 	// A user without an email, and no user, have no limits either.

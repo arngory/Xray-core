@@ -52,6 +52,15 @@ type Config struct {
 	FoldSuffixes []string
 }
 
+// Off reports whether the config limits nothing: every number is zero.
+func (c Config) Off() bool { return !c.limitsTCP() && !c.limitsUDP() }
+
+func (c Config) limitsTCP() bool { return c.Connections > 0 || c.Rate > 0 || c.FailedRate > 0 }
+
+func (c Config) limitsUDP() bool {
+	return c.UDPSessions > 0 || c.UDPRate > 0 || c.UDPLive > 0 || c.LookupRate > 0
+}
+
 const (
 	// attemptWait is less than the first SYN retry (1 s): the application
 	// does not send its SYN again while its connection waits for a token.
@@ -207,6 +216,16 @@ type user struct {
 	pairs                            int     // counted: live sessions' and the journal's
 	aged                             int64
 	refused                          [kinds]Counter
+}
+
+// Limits reports whether the limiter limits TCP connections, or with udp
+// UDP sessions: whether any of their numbers is on. A network it does not
+// limit is left as upstream has it.
+func (l *Limiter) Limits(udp bool) bool {
+	if udp {
+		return l.c.limitsUDP()
+	}
+	return l.c.limitsTCP()
 }
 
 // Name is the base name an email is limited by.
