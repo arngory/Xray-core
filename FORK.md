@@ -1,7 +1,8 @@
 # What this fork carries
 
-The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.10.31** (`a4a3dff`) plus the two changes
-below, for the exits of raycontrol (`inner` and REALITY). Each is written to be rebased: new files where it could be, and
+The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.11.9** (`676eaf6`) plus the two changes
+below (branch `raycontrol/v26.11.9`; they were written on v26.10.31, branch `raycontrol/v26.10.31`, and moved onto
+v26.11.9 without a conflict), for the exits of raycontrol (`inner` and REALITY). Each is written to be rebased: new files where it could be, and
 in upstream's files only the narrow hooks listed here. A hook is marked `// fork:` in the code.
 
 After a rebase, run what "Tests" names for each change.
@@ -110,4 +111,4 @@ holds its place but its pairs are not seen (it never gives way either). raycontr
   10 s a UDP session must be quiet to give way (`-short` skips it).
 
 Upstream's own tests in `proxy/blackhole`, `app/proxyman/outbound` and `core` fail under `-race` with races in the
-tests themselves (as at v26.10.31, without the fork's changes in those files); they pass without it.
+tests themselves (as at v26.10.31 and v26.11.9, without the fork's changes in those files); they pass without it.

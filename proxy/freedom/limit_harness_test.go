@@ -84,9 +84,9 @@ func newLimitTest(t *testing.T, limits *connlimit.Config) *limitTest {
 		pm = &limitPolicy{lim: r.Limiter(*limits)}
 	}
 	err := lt.h.Init(&Config{FinalRules: []*FinalRuleConfig{{
-		Action:     RuleAction_Block,
-		PortList:   &net.PortList{Range: []*net.PortRange{net.SinglePortRange(9)}},
-		BlockDelay: &Range{Min: 30, Max: 30},
+		Action:   RuleAction_Block,
+		PortList: &net.PortList{Range: []*net.PortRange{net.SinglePortRange(9)}},
+		Delay:    &Range{Min: 30, Max: 30},
 	}}}, pm)
 	if err != nil {
 		t.Fatal(err)
