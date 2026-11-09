@@ -435,6 +435,12 @@ func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.
 	outbounds := session.OutboundsFromContext(ctx)
 	ob := outbounds[len(outbounds)-1]
 
+	// fork: the user's connection limits, before the route is picked (connlimit.go)
+	var admitted bool
+	if ctx, admitted = d.admit(ctx, link, destination.Network); !admitted {
+		return
+	}
+
 	var handler outbound.Handler
 
 	routingLink := routing_session.AsRoutingContext(ctx)
