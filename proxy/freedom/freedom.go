@@ -290,13 +290,20 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 		}
 	}
 
+	// fork: the user's connection limits (limit.go)
+	lease, err := h.limit(ctx, destination.Network, &dialer)
+	if err != nil {
+		return err
+	}
+	defer lease.done()
+
 	input := link.Reader
 	output := link.Writer
 
 	var conn stat.Connection
 	var blockedDest *net.Destination
 	var blockedRule *FinalRule
-	err := retry.ExponentialBackoff(5, 100).On(func() error {
+	err = lease.retry(retry.ExponentialBackoff(5, 100)).On(func() error {
 		if destination.Address.Family().IsDomain() {
 			if defaultRule != nil || len(h.finalRules) > 0 {
 				if strategy := h.resolveStrategy; strategy.HasStrategy() {
@@ -354,6 +361,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 		return errors.New("failed to open connection to ", destination).Base(err)
 	}
 	if blockedDest != nil {
+		lease.done() // fork: a blackholed connection holds no place
 		return h.blackhole(ctx, input, output, blockedRule, blockedDest)
 	}
 	if destination.Address.Family().IsDomain() && (defaultRule != nil || len(h.finalRules) > 0) {
@@ -361,6 +369,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 		remoteDest := net.DestinationFromAddr(conn.RemoteAddr())
 		if rule := h.matchFinalRule(remoteDest.Network, remoteDest.Address, remoteDest.Port, defaultRule); rule != nil && rule.action == RuleAction_Block {
 			conn.Close()
+			lease.done() // fork: a blackholed connection holds no place
 			return h.blackhole(ctx, input, output, rule, &remoteDest)
 		}
 	}
@@ -392,6 +401,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 			newCancel()
 		}
 	}, plcy.Timeouts.ConnectionIdle)
+	lease.evictable(timer) // fork: a quiet UDP session gives way to a new one
 
 	requestDone := func() error {
 		defer timer.SetTimeout(plcy.Timeouts.DownlinkOnly)
@@ -602,6 +612,9 @@ func (w *PacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 			if b.UDP.Address.Family().IsDomain() {
 				if ip, ok := w.ResolvedUDPAddr.Load(b.UDP.Address.Domain()); ok {
 					b.UDP.Address = ip
+				} else if !w.limitLookup() { // fork: the user's lookup token, before the lookup
+					b.Release()
+					continue
 				} else {
 					shouldUseSystemResolver := true
 					if strategy := w.Handler.resolveStrategy; strategy.HasStrategy() {
