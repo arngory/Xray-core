@@ -11,6 +11,7 @@ import (
 	"github.com/pires/go-proxyproto"
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
+	"github.com/xtls/xray-core/common/connlimit"
 	"github.com/xtls/xray-core/common/crypto"
 	"github.com/xtls/xray-core/common/dice"
 	"github.com/xtls/xray-core/common/errors"
@@ -667,6 +668,9 @@ func (w *PacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 		}
 		b.Release()
 		if err != nil {
+			if connlimit.IsEPERM(err) { // fork: EPERM is a packet the kernel dropped, the session lives
+				continue
+			}
 			buf.ReleaseMulti(mb)
 			return err
 		}
