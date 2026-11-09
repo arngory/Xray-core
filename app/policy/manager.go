@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/xtls/xray-core/common"
+	"github.com/xtls/xray-core/common/connlimit"
 	"github.com/xtls/xray-core/features/policy"
 )
 
@@ -11,6 +12,7 @@ import (
 type Instance struct {
 	levels map[uint32]*Policy
 	system *SystemPolicy
+	limits map[uint32]*connlimit.Limiter // fork: limits.go
 }
 
 // New creates new Policy manager instance.
@@ -18,6 +20,7 @@ func New(ctx context.Context, config *Config) (*Instance, error) {
 	m := &Instance{
 		levels: make(map[uint32]*Policy),
 		system: config.System,
+		limits: newLimits(ctx, config),
 	}
 	if len(config.Level) > 0 {
 		for lv, p := range config.Level {

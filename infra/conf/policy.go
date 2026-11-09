@@ -13,6 +13,9 @@ type Policy struct {
 	StatsUserDownlink bool    `json:"statsUserDownlink"`
 	StatsUserOnline   bool    `json:"statsUserOnline"`
 	BufferSize        *int32  `json:"bufferSize"`
+
+	// fork: the per-user connection limits, policy_limits.go
+	Limits *PolicyLimits `json:"limits"`
 }
 
 func (t *Policy) Build() (*policy.Policy, error) {
@@ -48,6 +51,8 @@ func (t *Policy) Build() (*policy.Policy, error) {
 			Connection: bs,
 		}
 	}
+
+	p.Limits = t.Limits.Build()
 
 	return p, nil
 }
