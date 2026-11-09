@@ -264,16 +264,73 @@ func TestRefusedPairsAreNotCounted(t *testing.T) {
 	if !s.Send(ap(2)) || !s.Send(ap(3)) {
 		t.Fatal("refused pairs held the places of real ones")
 	}
-	// Sent again, and not refused: counted.
-	s.Send(ap(0))
-	if n := pairsOf(l, "u5"); n != 3 {
+	// Sent again, and not refused, it is a new pair: no room for it.
+	if s.Send(ap(0)) {
+		t.Fatal("a refused pair revived past the user's pairs")
+	}
+	if n := pairsOf(l, "u5"); n != 2 {
 		t.Fatal("pairs: ", n)
 	}
-	s.Unsent(ap(0))
+	// Refused pairs do not go to the journal either.
+	s.Unsent(ap(3))
 	s.Done()
-	if n := pairsOf(l, "u5"); n != 2 {
+	if n := pairsOf(l, "u5"); n != 1 {
 		t.Fatal("pairs in the journal: ", n)
 	}
+}
+
+// A pair the kernel refused is not counted, but the packet that revives it
+// is a new pair: within the user's pairs and the process's ceiling, without
+// a second token for its destination. Otherwise refusals while the guard is
+// on would let a user hold any number of pairs once it is off.
+func TestRefusedPairsCannotExceedTheLimit(t *testing.T) {
+	l, f := newLimiter(t, Config{UDPLive: 4, UDPRate: 4, UDPBurst: 4})
+	s := mustUDP(t, l, "u5")
+	// The guard is on: 4 new destinations a second, each refused.
+	for i := range 20 {
+		if !s.Send(ap(i)) {
+			t.Fatal("refused pairs held the places of new ones: ", i)
+		}
+		s.Unsent(ap(i))
+		if i%4 == 3 {
+			f.advance(time.Second)
+		}
+	}
+	if n := pairsOf(l, "u5"); n != 0 {
+		t.Fatal("refused pairs counted: ", n)
+	}
+	// It is off: the session sends to all 20 again, no token for a new
+	// destination left.
+	sent := 0
+	for i := range 20 {
+		if s.Send(ap(i)) {
+			sent++
+		}
+	}
+	if sent != 4 || pairsOf(l, "u5") != 4 {
+		t.Fatal("pairs revived: ", sent, ", counted ", pairsOf(l, "u5"), "; want the limit, 4")
+	}
+	f.counts(t, map[string]int64{"u5/live": 16})
+
+	// At the process's ceiling, a revived pair is a new one too.
+	r, f := newFake(t)
+	r.ctMax = func() (uint64, error) { return 8, nil } // a ceiling of 2
+	l = r.Limiter(Config{UDPLive: 100})
+	s, o := mustUDP(t, l, "u5"), mustUDP(t, l, "u6")
+	for i := range 2 {
+		s.Send(ap(i))
+		s.Unsent(ap(i))
+	}
+	f.advance(time.Second)
+	s.Send(ap(2))
+	s.Send(ap(3))
+	o.Send(ap(0))
+	// 3 pairs of 2 users at a ceiling of 2: u5, with 2, is above the share
+	// of 1.
+	if s.Send(ap(0)) {
+		t.Fatal("a refused pair revived past the ceiling, above the share")
+	}
+	f.counts(t, map[string]int64{"u5/live": 1})
 }
 
 // At the process's ceiling, a quarter of nf_conntrack_max, only the users

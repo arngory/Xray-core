@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	gonet "net"
+	"os"
 	"sync"
 	"syscall"
 	"testing"
@@ -309,6 +310,36 @@ func TestUDPPairs(t *testing.T) {
 	n.packet(t, "203.0.113.5:53")
 	npc.wrote(t, "203.0.113.1:443", "203.0.113.5:53")
 	lt.counts(map[string]int64{"u5/live": 4})
+}
+
+// A packet the kernel refused (EPERM: the conntrack guard, the egress
+// policy) makes no conntrack entry: its pair does not count against the
+// user's pairs. The packet that later goes through is a new pair, and
+// cannot take the user past them.
+func TestRefusedPairsDoNotCount(t *testing.T) {
+	lt := newLimitTest(t, &connlimit.Config{UDPLive: 1})
+	ud := newUDPDialer()
+	s := lt.start("u5", udpDest, ud, paid)
+	pc := <-ud.conns
+	refuse := true
+	pc.writeErr = func() error {
+		if refuse {
+			refuse = false
+			return &gonet.OpError{Op: "write", Net: "udp", Err: os.NewSyscallError("sendto", syscall.EPERM)}
+		}
+		return nil
+	}
+	s.packet(t, "") // refused
+	pc.writes(t, 1)
+	lt.advance(time.Second) // the user's pairs are recounted
+	s.packet(t, "203.0.113.2:53")
+	pc.wrote(t, "203.0.113.2:53")
+	// The refused pair, sent to again: the user has its one pair.
+	s.packet(t, "")
+	s.packet(t, "203.0.113.2:53")
+	pc.wrote(t, "203.0.113.2:53", "203.0.113.2:53")
+	lt.counts(map[string]int64{"u5/live": 1})
+	s.running(t)
 }
 
 // New destinations pay a token each, but the session's first, which the
