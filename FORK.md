@@ -1,6 +1,6 @@
 # What this fork carries
 
-The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.11.9** (`676eaf6`) plus the two changes
+The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.11.9** (`676eaf6`) plus the three changes
 below (branch `raycontrol/v26.11.9`; they were written on v26.10.31, branch `raycontrol/v26.10.31`, and moved onto
 v26.11.9 without a conflict), for the exits of raycontrol (`inner` and REALITY). Each is written to be rebased: new files where it could be, and
 in upstream's files only the narrow hooks listed here. A hook is marked `// fork:` in the code.
@@ -109,6 +109,18 @@ holds its place but its pairs are not seen (it never gives way either). raycontr
   spoken by the test (VLESS, mux, XUDP) or, once, an Xray client over REALITY and Vision: what a client sees at each
   limit, the counters through `StatsService`, the log, and that nothing changes without `limits`. One test waits the
   10 s a UDP session must be quiet to give way (`-short` skips it).
+
+## 3. A unix socket left by a killed process does not block the next one
+
+Upstream takes a file lock (`<address>.lock`) before it listens on a unix socket in the file system, but does not
+remove a socket file that is already there. A process that was killed (SIGKILL, or SIGTERM before its handlers were
+set) leaves the file, and every start after it fails with `bind: address already in use` until someone removes it by
+hand: raycontrol saw `inner` and REALITY loop on their API socket after quick restarts in a row.
+
+- Hook in `transport/internet/system_listener.go`, `DefaultListener.Listen`: once the lock is held, a path that is a
+  socket is removed before the bind. The lock means no process that takes it listens there. Anything that is not a
+  socket is left alone, and the bind fails as before.
+- Tests: `transport/internet/system_listener_stale_test.go` (`go test ./transport/internet/ -run TestListen`).
 
 Upstream's own tests in `proxy/blackhole`, `app/proxyman/outbound` and `core` fail under `-race` with races in the
 tests themselves (as at v26.10.31 and v26.11.9, without the fork's changes in those files); they pass without it.
