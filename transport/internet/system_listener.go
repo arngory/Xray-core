@@ -145,6 +145,16 @@ func (dl *DefaultListener) Listen(ctx context.Context, addr net.Addr, sockopt *S
 			if err := locker.Acquire(); err != nil {
 				return nil, err
 			}
+			// The lock is held, so no process that takes it listens on the
+			// address: a socket file here is what one that was killed left
+			// (a clean close removes it), and it would fail every bind after
+			// it with "address already in use".
+			if fi, err := os.Lstat(address); err == nil && fi.Mode()&os.ModeSocket != 0 {
+				if err := os.Remove(address); err != nil {
+					locker.Release()
+					return nil, errors.New("failed to remove the stale socket " + address).Base(err)
+				}
+			}
 
 			// set callback to combine listener and set permission
 			callback = func(l net.Listener, err error) (net.Listener, error) {
