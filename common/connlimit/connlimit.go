@@ -179,8 +179,12 @@ func (r *Registry) SetCounters(f func(user, kind string) Counter) {
 // ceiling of pairs is the process's.
 func (r *Registry) Limiter(c Config) *Limiter {
 	// A bucket holds a token at least.
-	for _, b := range []struct{ rate, burst *float64 }{{&c.Rate, &c.Burst}, {&c.FailedRate, &c.FailedBurst},
-		{&c.UDPRate, &c.UDPBurst}, {&c.LookupRate, &c.LookupBurst}} {
+	for _, b := range []struct{ rate, burst *float64 }{
+		{&c.Rate, &c.Burst},
+		{&c.FailedRate, &c.FailedBurst},
+		{&c.UDPRate, &c.UDPBurst},
+		{&c.LookupRate, &c.LookupBurst},
+	} {
 		if *b.rate > 0 && *b.burst < 1 {
 			*b.burst = max(1, *b.rate)
 		}
@@ -251,8 +255,10 @@ func (l *Limiter) userLocked(name string, now int64) *user {
 	u := l.users[name]
 	if u == nil {
 		c := &l.c
-		u = &user{attempts: bucket{c.Burst, now}, failed: bucket{c.FailedBurst, now}, dests: bucket{c.UDPBurst, now},
-			lookups: bucket{c.LookupBurst, now}, aged: now}
+		u = &user{
+			attempts: bucket{c.Burst, now}, failed: bucket{c.FailedBurst, now}, dests: bucket{c.UDPBurst, now},
+			lookups: bucket{c.LookupBurst, now}, aged: now,
+		}
 		l.users[name] = u
 	}
 	return u

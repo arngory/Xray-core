@@ -53,8 +53,10 @@ func TestLimitsByLevel(t *testing.T) {
 		}
 	}
 	// Not limited: a level without limits, a user without an email, no user.
-	for _, ctx := range []context.Context{userContext("u5", 1), userContext("", 0), context.Background(),
-		session.ContextWithInbound(context.Background(), &session.Inbound{})} {
+	for _, ctx := range []context.Context{
+		userContext("u5", 1), userContext("", 0), context.Background(),
+		session.ContextWithInbound(context.Background(), &session.Inbound{}),
+	} {
 		if l, _ := connlimit.FromContext(ctx, m); l != nil {
 			t.Error("a limiter where there is nothing to limit")
 		}
@@ -62,8 +64,10 @@ func TestLimitsByLevel(t *testing.T) {
 
 	// "limits" with every number zero (how emails fold is no limit) is no
 	// limits.
-	m, err = New(context.Background(), &Config{Level: map[uint32]*Policy{0: {}, 1: {Limits: &Policy_Limits{}},
-		2: {Limits: &Policy_Limits{FoldAt: "-", FoldSuffixes: []string{"-n"}}}}})
+	m, err = New(context.Background(), &Config{Level: map[uint32]*Policy{
+		0: {}, 1: {Limits: &Policy_Limits{}},
+		2: {Limits: &Policy_Limits{FoldAt: "-", FoldSuffixes: []string{"-n"}}},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
