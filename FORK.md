@@ -124,3 +124,35 @@ hand: raycontrol saw `inner` and REALITY loop on their API socket after quick re
 
 Upstream's own tests in `proxy/blackhole`, `app/proxyman/outbound` and `core` fail under `-race` with races in the
 tests themselves (as at v26.10.31 and v26.11.9, without the fork's changes in those files); they pass without it.
+
+## Who pins it
+
+raycontrol builds its Xray from this fork by commit (`XRAY_COMMIT` in raycontrol's `deploy/versions.env`). A
+release is rebuilt from its pin, so the branches that hold the pins are never rewritten or deleted:
+
+| raycontrol | Commit | Branch |
+|---|---|---|
+| v0.2.0 … v0.20.x | `a4a3dff`: upstream v26.10.31, without changes | upstream's history |
+| v0.21.0 … v0.24.x | `88b1d7b` (tag `v26.10.31-raycontrol.1`) | `raycontrol/v26.10.31` |
+| v0.25.0 | `5648b7a` | `raycontrol/v26.10.31` |
+| v0.25.1 | `15f4069` | `raycontrol/v26.11.9` |
+| v0.26.0 on | `46b58d4` | `raycontrol/v26.11.9` |
+
+The interop tests of niko-server and Niko run upstream's Xray (`676eaf6`, `a4a3dff`), not the fork's.
+`claude/clever-feynman-w0e2v1` is the old working line; every pin is on the two `raycontrol/*` branches as well.
+
+## Working on it
+
+- The newest `raycontrol/<version>` is the fork's default branch. A change goes there by a pull request from a branch
+  of its own, with a test that fails without it and its section in this file.
+- A new upstream version is a new branch: upstream's tag with the fork's commits rebased onto it, as v26.10.31 became
+  v26.11.9 (`git switch -c raycontrol/v26.11.9 raycontrol/v26.10.31 && git rebase --onto v26.11.9 v26.10.31`). The
+  tests named in each section pass on it. Then raycontrol moves `XRAY_COMMIT`, the default branch moves to the new
+  branch, and the old branch stays.
+- Checks (`.github/workflows/checks.yml`): "Commit messages" (no bare `#N`; in a fork GitHub links a bare `#N` to
+  upstream's issues, so write `arngory/Xray-core#N`) and "Secrets" (gitleaks, rules in `.gitleaks.toml`). Both take
+  only the pull request's own line, not upstream's commits. Upstream's workflows (`test.yml` and the rest) run as
+  upstream has them.
+- A pull request that changes the checks themselves is merged by the owner.
+- The rules shared with raycontrol, niko-server and Niko: raycontrol's
+  [CONTRIBUTING.md](https://github.com/arngory/raycontrol/blob/main/CONTRIBUTING.md).

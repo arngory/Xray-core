@@ -1,5 +1,9 @@
 # Project X
 
+> **This is a fork.** arngory/Xray-core carries the changes raycontrol's exits need (a removed user's connections
+> closed, per-user connection limits, a stale unix socket taken away) on branches `raycontrol/<version>`: what they
+> are and who pins them is in [FORK.md](FORK.md). The rest of this file is upstream's.
+
 [Project X](https://github.com/XTLS) originates from XTLS protocol, providing a set of network tools such as [Xray-core](https://github.com/XTLS/Xray-core) and [REALITY](https://github.com/XTLS/REALITY).
 
 [README](https://github.com/XTLS/Xray-core#readme) is open, so feel free to submit your project [here](https://github.com/XTLS/Xray-core/pulls).
