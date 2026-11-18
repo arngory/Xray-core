@@ -153,6 +153,11 @@ The interop tests of niko-server and Niko run upstream's Xray (`676eaf6`, `a4a3d
   upstream's issues, so write `arngory/Xray-core#N`) and "Secrets" (gitleaks, rules in `.gitleaks.toml`). Both take
   only the pull request's own line, not upstream's commits. Upstream's workflows (`test.yml` and the rest) run as
   upstream has them.
+- Upstream's tests (`test.yml`, on Linux, macOS and Windows) need `geoip.dat` and `geosite.dat` from the Actions
+  cache that "Scheduled assets update" fills from XTLS/Xray-rules-dat. GitHub runs no schedule in a fork until it is
+  turned on, and drops a cache nobody used for 7 days: when the tests miss the files, run that workflow by hand on
+  the default branch (Actions → Scheduled assets update → Run workflow), or turn its schedule on.
+- The fork's own tests run on all three: Vision's splice is Linux's (and Android's), so only there do they look for it.
 - A pull request that changes the checks themselves is merged by the owner.
 - The rules shared with raycontrol, niko-server and Niko: raycontrol's
   [CONTRIBUTING.md](https://github.com/arngory/raycontrol/blob/main/CONTRIBUTING.md).

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	gonet "net"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -41,7 +42,7 @@ func testTransports(t *testing.T) []testTransport {
 	}
 	// The inbound worker gets unix connections through this wrapper.
 	listenUnix := func(t *testing.T) gonet.Listener {
-		ln, err := gonet.Listen("unix", filepath.Join(t.TempDir(), "inner.sock"))
+		ln, err := gonet.Listen("unix", filepath.Join(shortTempDir(t), "inner.sock"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -282,4 +283,16 @@ func TestRemoveUserDoesNotWaitForStalledClient(t *testing.T) {
 			checkTracked(t, h, 0, 0)
 		})
 	}
+}
+
+// shortTempDir is a temporary directory with a short path. t.TempDir() puts
+// the test's name in it, and a socket there passes the 104 bytes of a unix
+// socket path on macOS (108 on Windows): bind fails with "invalid argument".
+func shortTempDir(t *testing.T) string {
+	dir, err := os.MkdirTemp("", "xs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
 }

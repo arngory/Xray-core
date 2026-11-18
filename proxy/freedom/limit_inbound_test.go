@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	gotls "crypto/tls"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	gonet "net"
@@ -309,8 +310,14 @@ func closedWithoutData(err error) bool {
 	if err == nil || strings.Contains(err.Error(), "bytes of data") && !strings.Contains(err.Error(), " 0 bytes of data") {
 		return false
 	}
-	return strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset")
+	return strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") ||
+		errors.Is(err, wsaeconnreset)
 }
+
+// wsaeconnreset is Windows' WSAECONNRESET: where Linux reads EOF or
+// "connection reset by peer" off a connection the node closed, Windows reads
+// this reset ("An existing connection was forcibly closed").
+const wsaeconnreset = syscall.Errno(10054)
 
 // udpConn is a proxied UDP session of a user (the VLESS UDP command), with
 // what came of it, as tcpConn.

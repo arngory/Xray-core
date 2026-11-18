@@ -12,6 +12,7 @@ import (
 	gonet "net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -203,7 +204,7 @@ func testVlessRemoveUser(t *testing.T, c removeUserCase) {
 		StreamSettings: serverStream,
 	}
 	if c.unix {
-		socket := filepath.Join(t.TempDir(), "inner.sock")
+		socket := filepath.Join(shortTempDir(t), "inner.sock")
 		receiver = &proxyman.ReceiverConfig{Listen: net.NewIPOrDomain(net.DomainAddress(socket))}
 		serverPort = startForwarder(t, socket)
 	}
@@ -355,7 +356,10 @@ func testVlessRemoveUser(t *testing.T, c removeUserCase) {
 	if c.vision {
 		waitLog(t, logPath, "XtlsFilterTls found tls 1.3")
 	}
-	if c.vision && !c.encryption { // VLESS encryption disables splice
+	// VLESS encryption disables splice, and Xray splices on Linux and Android
+	// only (proxy/proxy.go): elsewhere Vision copies, and RemoveUser must end
+	// the stream all the same.
+	if c.vision && !c.encryption && (runtime.GOOS == "linux" || runtime.GOOS == "android") {
 		waitLog(t, logPath, "CopyRawConn splice")
 	}
 
@@ -533,4 +537,16 @@ func waitLog(t *testing.T, path, s string) {
 		}
 	}
 	t.Fatal("server log has no ", fmt.Sprintf("%q", s))
+}
+
+// shortTempDir is a temporary directory with a short path. t.TempDir() puts
+// the test's name in it, and a socket there passes the 104 bytes of a unix
+// socket path on macOS (108 on Windows): bind fails with "invalid argument".
+func shortTempDir(t *testing.T) string {
+	dir, err := os.MkdirTemp("", "xs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
 }
