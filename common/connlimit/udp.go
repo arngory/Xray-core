@@ -83,8 +83,10 @@ func (l *Limiter) UDP(name string, paid bool) (*UDPSession, error) {
 		evict, quiet.evict = quiet.evict, nil
 		l.refuseLocked(u, name, kindEvicted)
 	}
-	s := &UDPSession{l: l, u: u, name: name, free: true, paired: l.c.UDPLive > 0 || l.c.UDPRate > 0,
-		pairs: map[netip.AddrPort]pairTimes{}, aged: now}
+	s := &UDPSession{
+		l: l, u: u, name: name, free: true, paired: l.c.UDPLive > 0 || l.c.UDPRate > 0,
+		pairs: map[netip.AddrPort]pairTimes{}, aged: now,
+	}
 	s.last.Store(now)
 	if u.sessions == nil {
 		u.sessions = map[*UDPSession]struct{}{}

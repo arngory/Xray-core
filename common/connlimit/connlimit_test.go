@@ -476,8 +476,10 @@ func TestSweep(t *testing.T) {
 // are forgotten and the process counts no pairs.
 func TestConcurrent(t *testing.T) {
 	r, f := newFake(t)
-	l := r.Limiter(Config{Connections: 4, Rate: 1000, Burst: 50, FailedRate: 100, FailedBurst: 5,
-		UDPSessions: 4, UDPRate: 1000, UDPBurst: 50, UDPLive: 16, LookupRate: 100, LookupBurst: 5})
+	l := r.Limiter(Config{
+		Connections: 4, Rate: 1000, Burst: 50, FailedRate: 100, FailedBurst: 5,
+		UDPSessions: 4, UDPRate: 1000, UDPBurst: 50, UDPLive: 16, LookupRate: 100, LookupBurst: 5,
+	})
 	var refused sync.Map
 	var wg sync.WaitGroup
 	wg.Add(1)
