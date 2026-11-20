@@ -68,3 +68,6 @@ tool (
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	google.golang.org/protobuf/cmd/protoc-gen-go
 )
+
+// fork: REALITY with the fork's change (FORK.md, 4); the require above names the commit it is a copy of
+replace github.com/xtls/reality => ./third_party/reality
