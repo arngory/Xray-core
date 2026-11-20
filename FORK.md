@@ -161,7 +161,8 @@ release is rebuilt from its pin, so the branches that hold the pins are never re
 | v0.21.0 … v0.24.x | `88b1d7b` (tag `v26.10.31-raycontrol.1`) | `raycontrol/v26.10.31` |
 | v0.25.0 | `5648b7a` | `raycontrol/v26.10.31` |
 | v0.25.1 | `15f4069` | `raycontrol/v26.11.9` |
-| v0.26.0 on | `46b58d4` | `raycontrol/v26.11.9` |
+| v0.26.0 … v0.34.x | `46b58d4` | `raycontrol/v26.11.9` |
+| v0.35.0 on | `fd9d28f` | `raycontrol/v26.11.9` |
 
 The interop tests of niko-server and Niko run upstream's Xray (`676eaf6`, `a4a3dff`), not the fork's.
 `claude/clever-feynman-w0e2v1` is the old working line; every pin is on the two `raycontrol/*` branches as well.
