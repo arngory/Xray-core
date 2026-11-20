@@ -1,0 +1,6 @@
+# Findings of gitleaks that are no secret (checks.yml, job Secrets, reads this file as the fork's branch has it). One
+# line a finding: commit:file:rule:line, with why above it.
+
+# third_party/reality is xtls/reality file for file (FORK.md, 4): this line compares a key share's length with
+# mlkem.EncapsulationKeySize768, which the generic rule takes for a key
+e9129276f072b397d46c577fbd12841c032b76f0:third_party/reality/tls.go:generic-api-key:217
