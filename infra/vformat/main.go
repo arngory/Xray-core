@@ -156,6 +156,10 @@ func main() {
 		}
 
 		if info.IsDir() {
+			// fork: third_party holds other modules as they are, formatted their way (FORK.md, 4)
+			if path == filepath.Join(pwd, "third_party") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
