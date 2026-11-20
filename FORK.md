@@ -1,9 +1,10 @@
 # What this fork carries
 
-The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.11.9** (`676eaf6`) plus the three changes
-below (branch `raycontrol/v26.11.9`; they were written on v26.10.31, branch `raycontrol/v26.10.31`, and moved onto
-v26.11.9 without a conflict), for the exits of raycontrol (`inner` and REALITY). Each is written to be rebased: new files where it could be, and
-in upstream's files only the narrow hooks listed here. A hook is marked `// fork:` in the code.
+The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.11.9** (`676eaf6`) plus the four changes
+below (branch `raycontrol/v26.11.9`; the first three were written on v26.10.31, branch `raycontrol/v26.10.31`, and
+moved onto v26.11.9 without a conflict), for the exits of raycontrol (`inner` and REALITY). Each is written to be
+rebased: new files where it could be, and in upstream's files only the narrow hooks listed here. A hook is marked
+`// fork:` in the code.
 
 After a rebase, run what "Tests" names for each change.
 
@@ -121,6 +122,30 @@ hand: raycontrol saw `inner` and REALITY loop on their API socket after quick re
   socket is removed before the bind. The lock means no process that takes it listens there. Anything that is not a
   socket is left alone, and the bind fails as before.
 - Tests: `transport/internet/system_listener_stale_test.go` (`go test ./transport/internet/ -run TestListen`).
+
+## 4. REALITY: no server_name ack of its own
+
+REALITY borrows the handshake of its target and pads each of its own handshake records to the length of the
+target's (`third_party/reality/conn.go`, "mimic recorded handshakeLen"); a record of its own longer than the
+target's fails the handshake. The `github.com/xtls/reality` that upstream's v26.11.9 requires (`4bb46b2`) acks the
+client's server_name in its EncryptedExtensions, 4 bytes, whatever the target does. A target that acks no name and
+picks no ALPN (`openssl s_server` by default) has shorter EncryptedExtensions, and every REALITY handshake to it
+failed with `payload[0]: 8, padding: -4`; upstream's Xray at `676eaf6` fails the same way. A client does not need
+the ack (RFC 6066 leaves it to the server; Go's and uTLS's clients never ask for it). Without it REALITY's EncryptedExtensions are empty:
+never longer than the target's, and padded to the target's length as before, so they look the same on the wire.
+
+- `third_party/reality/`: the module at the version upstream's `go.mod` requires, file for file but for the hook,
+  built through a `replace` in `go.mod` (`third_party/README.md`). `infra/vformat/main.go` skips `third_party`, which
+  keeps its module's formatting.
+- Hook in `third_party/reality/handshake_server_tls13.go`, `sendServerParameters`: the three lines that set
+  `encryptedExtensions.serverNameAck` are gone.
+- Tests: `transport/internet/reality/target_test.go` (`go test ./transport/internet/reality/ -run
+  TestTargetExtensions`): targets of Go's that ack the name, pick ALPN, or do neither; the last fails without the
+  change.
+- A new upstream version that requires another `github.com/xtls/reality`: copy that version over the old one
+  (`go mod download -json github.com/xtls/reality@VERSION` names its directory), put the hook back, and update the
+  table in `third_party/README.md`. If that REALITY no longer acks a name the target did not, drop the copy and
+  the `replace`.
 
 Upstream's own tests in `proxy/blackhole`, `app/proxyman/outbound` and `core` fail under `-race` with races in the
 tests themselves (as at v26.10.31 and v26.11.9, without the fork's changes in those files); they pass without it.

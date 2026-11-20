@@ -897,9 +897,8 @@ func (hs *serverHandshakeStateTLS13) sendServerParameters() error {
 		encryptedExtensions.earlyData = hs.earlyData
 	}
 
-	if !hs.c.didResume && hs.clientHello.serverName != "" {
-		encryptedExtensions.serverNameAck = true
-	}
+	// fork: no server_name ack. REALITY cannot know whether the target acks the name, and these extensions must not
+	// be longer than the target's: conn.go pads them to the target's length and fails when they are (FORK.md, 4).
 
 	// If client sent ECH extension, but we didn't accept it,
 	// send retry configs, if available.
