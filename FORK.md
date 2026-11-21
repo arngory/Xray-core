@@ -39,7 +39,7 @@ set), per policy level, in one registry per process:
 | `failedRate`, `failedBurst` | failed dials (timeout, ECONNREFUSED, EHOSTUNREACH), paid after the failure into debt; in debt new connections are refused | `failed` |
 | `udpSessions` | UDP sessions at once (XUDP included); a new one past it takes the place of the quietest, silent 10 s both ways | `udp` (none quiet), `evicted` |
 | `udpRate`, `udpBurst` | new UDP destinations | `dest` |
-| `udpLive` | UDP pairs (socket, destination) for as long as conntrack keeps them: 30 s after the last packet sent while unanswered, 120 s after the last packet either way once answered, in a live session and after it; and the process's ceiling, a quarter of `nf_conntrack_max`, which refuses only the users above their fair share | `live` |
+| `udpLive` | UDP pairs (socket, destination) for as long as conntrack keeps them: 30 s after the last packet sent while unanswered; once answered, 30 s after the last packet either way, 120 s if that one came past 2 s from the first (a stream, `nf_conntrack_proto_udp.c`), in a live session and after it. Up to `aaa75c2`, any answered pair counted 120 s, and a lookup (a query, its answer) held its place four times as long as the kernel: from some 8 lookups a second, each from its own port, a user's new UDP was dropped; and the process's ceiling, a quarter of `nf_conntrack_max`, which refuses only the users above their fair share | `live` |
 | `lookupRate`, `lookupBurst` | lookups of names in UDP packets | `lookup` |
 | `foldAt`, `foldSuffixes` | how an email becomes the base name: cut at the first `foldAt`; an ending in `foldSuffixes` cut off | |
 

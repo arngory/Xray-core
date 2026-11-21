@@ -139,15 +139,16 @@ func TestNewDestinations(t *testing.T) {
 }
 
 // A pair is counted as conntrack keeps it: 30 s after the last packet sent
-// while unanswered, 120 s after the last packet either way once answered;
-// in a live session.
+// while unanswered, 120 s after the last packet either way once answered
+// past 2 s from its first (a stream); in a live session.
 func TestPairsAgeInALiveSession(t *testing.T) {
 	l, f := newLimiter(t, Config{UDPLive: 2})
 	s := mustUDP(t, l, "u5")
 	if !s.Send(ap(1)) || !s.Send(ap(2)) {
 		t.Fatal("two pairs")
 	}
-	s.Heard(ap(2)) // answered
+	f.advance(3 * time.Second)
+	s.Heard(ap(2)) // answered past 2 s from its first packet: a stream
 	if s.Send(ap(3)) {
 		t.Fatal("a third pair past the limit of 2")
 	}
@@ -197,7 +198,8 @@ func TestPairsOutliveTheirSession(t *testing.T) {
 	s := mustUDP(t, l, "u5")
 	s.Send(ap(1))
 	s.Send(ap(2))
-	s.Heard(ap(2))
+	f.advance(3 * time.Second)
+	s.Heard(ap(2)) // a stream: answered past 2 s
 	s.Done()
 	n := mustUDP(t, l, "u5")
 	if !n.Send(ap(3)) {
@@ -369,14 +371,15 @@ func TestProcessCeiling(t *testing.T) {
 		t.Fatal("nf_conntrack_max read ", reads, " times")
 	}
 	// The ceiling follows nf_conntrack_max within a minute. (The pairs are
-	// answered: they live through it.)
+	// answered past 2 s, streams: they live through it.)
+	f.advance(3 * time.Second)
 	for i := range 8 {
 		big.Heard(ap(i))
 		small.Heard(ap(i))
 		third.Heard(ap(i))
 	}
 	max = 400
-	f.advance(59 * time.Second)
+	f.advance(56 * time.Second)
 	if big.Send(ap(8)) {
 		t.Fatal("the ceiling moved before its minute")
 	}
@@ -470,5 +473,24 @@ func TestPacketPathAllocatesNothing(t *testing.T) {
 	r.mu.Unlock()
 	if n != 0 {
 		t.Fatal("allocations a packet: ", n)
+	}
+}
+
+// A browser's lookups, 30 a second, each from its own port (its own
+// session), for five minutes, get through: a lookup is a pair 30 s after
+// its answer, as conntrack keeps it, and 1024 pairs hold 34 a second.
+// Counted 120 s, they ran out at some 8 a second.
+func TestPairsLookupRate(t *testing.T) {
+	l, f := newLimiter(t, Config{UDPSessions: 256, UDPRate: 100, UDPBurst: 200, UDPLive: 1024})
+	resolver := netip.AddrPortFrom(netip.AddrFrom4([4]byte{198, 51, 0, 53}), 53)
+	for i := range 30 * 300 {
+		f.advance(time.Second / 30)
+		s := mustUDP(t, l, "u5")
+		if !s.Send(resolver) {
+			t.Fatalf("lookup %d refused", i)
+		}
+		f.advance(20 * time.Millisecond)
+		s.Heard(resolver)
+		s.Done()
 	}
 }
