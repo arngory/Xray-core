@@ -33,21 +33,27 @@ type UDPSession struct {
 	aged  int64
 }
 
-// pairTimes are a pair's last packet sent, last either way, and whether an
-// answer came. refused: the kernel refused the last packet to it (the
-// conntrack guard, the egress policy), so there is no entry to count.
+// pairTimes are a pair's first packet, last sent, last either way, and
+// whether an answer came. refused: the kernel refused the last packet to
+// it (the conntrack guard, the egress policy), so there is no entry to
+// count.
 type pairTimes struct {
-	sent, any int64
-	answered  bool
-	refused   bool
+	first, sent, any int64
+	answered         bool
+	refused          bool
 }
 
-// end is when conntrack lets the pair go.
+// end is when conntrack lets the pair go: 30 s after the last packet sent
+// while unanswered; once answered, 30 s after the last packet either way,
+// 120 s if that one came past 2 s from the first.
 func (p pairTimes) end() int64 {
-	if p.answered {
+	if !p.answered {
+		return p.sent + int64(pairUnanswered)
+	}
+	if p.any > p.first+int64(pairStreamAt) {
 		return p.any + int64(pairAnswered)
 	}
-	return p.sent + int64(pairUnanswered)
+	return p.any + int64(pairUnanswered)
 }
 
 // UDP takes a place among the user's UDP sessions, until Done: at the
@@ -185,7 +191,7 @@ func (s *UDPSession) Send(to netip.AddrPort) bool {
 	if s.ended.Load() {
 		return false
 	}
-	s.pairs[to] = pairTimes{sent: now, any: now}
+	s.pairs[to] = pairTimes{first: now, sent: now, any: now}
 	return true
 }
 

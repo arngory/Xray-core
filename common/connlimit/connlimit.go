@@ -66,10 +66,14 @@ const (
 	// does not send its SYN again while its connection waits for a token.
 	attemptWait = 500 * time.Millisecond
 	quietAfter  = 10 * time.Second
-	// A pair as conntrack keeps it: 30 s after the last packet sent while
-	// unanswered, 120 s after the last packet either way once answered.
+	// A pair as conntrack keeps it (linux:nf_conntrack_proto_udp.c,
+	// nf_conntrack_udp_packet): 30 s after its last packet, and 120 s once
+	// answered and still live past 2 s from its first, a stream. A lookup
+	// (a query, its answer) is 30 s: counted 120, a user's pairs ran out at
+	// some 8 lookups a second.
 	pairAnswered   = 120 * time.Second
 	pairUnanswered = 30 * time.Second
+	pairStreamAt   = 2 * time.Second
 	// ageEvery: a user's pairs are aged this often at most.
 	ageEvery   = time.Second
 	sweepEvery = 10 * time.Second
