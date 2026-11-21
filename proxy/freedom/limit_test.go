@@ -310,7 +310,10 @@ func TestUDPPairs(t *testing.T) {
 	pc.wrote(t, "203.0.113.1:443", "203.0.113.2:53", "203.0.113.2:53")
 	lt.counts(map[string]int64{"u5/live": 1})
 
-	// 203.0.113.2 answers; the session's destination does not.
+	// 203.0.113.2 answers 3 s on, a stream (an answer within 2 s would end
+	// its pair 30 s after it, as conntrack does); the session's
+	// destination does not.
+	lt.advance(3 * time.Second)
 	pc.in <- &gonet.UDPAddr{IP: gonet.IPv4(203, 0, 113, 2), Port: 53}
 	if mb, err := s.down.ReadMultiBuffer(); err != nil || mb.String() != "answer" {
 		t.Fatal("the answer: ", mb, err)
