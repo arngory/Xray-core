@@ -159,7 +159,9 @@ the node has, could open connections and send nothing more, each held until the 
 conntrack entries no limit counts, since conn-limit counts a connection only once its UUID is read.
 
 - Hook in `proxy/vless/inbound/inbound.go`, `Process`: the deadline is set before `decryption.Handshake` instead of
-  after; it then covers both handshakes, and is cleared as before once the request header is read.
+  after; it then covers both handshakes, and is cleared as before once the request header is read. The window now
+  holds the server's padding waits of VLESS Encryption too: that matters only with a handshake timeout of a few
+  seconds or less, not with the default.
 - Tests: `proxy/vless/inbound/deadline_test.go` (`go test ./proxy/vless/inbound/ -run
   TestEncryptionHandshakeDeadline`): over raw TCP, unix, TLS and REALITY, a client that sends nothing is dropped at
   the deadline; it hangs without the change. `transport/internet/reality/target_test.go`, `TestServerNameNotListed`:
