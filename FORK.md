@@ -1,6 +1,6 @@
 # What this fork carries
 
-The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.11.9** (`676eaf6`) plus the four changes
+The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.11.9** (`676eaf6`) plus the five changes
 below (branch `raycontrol/v26.11.9`; the first three were written on v26.10.31, branch `raycontrol/v26.10.31`, and
 moved onto v26.11.9 without a conflict), for the exits of raycontrol (`inner` and REALITY). Each is written to be
 rebased: new files where it could be, and in upstream's files only the narrow hooks listed here. A hook is marked
@@ -149,6 +149,24 @@ never longer than the target's, and padded to the target's length as before, so 
 
 Upstream's own tests in `proxy/blackhole`, `app/proxyman/outbound` and `core` fail under `-race` with races in the
 tests themselves (as at v26.10.31 and v26.11.9, without the fork's changes in those files); they pass without it.
+
+## 5. VLESS inbound: the handshake's deadline covers VLESS Encryption's
+
+Why: `Process` set the read deadline of `policy.levels.N.handshake` (60 s by default) only after VLESS Encryption's
+handshake. Before it nothing timed the connection out: REALITY and TLS leave no deadline once their own handshake is
+done, and raycontrol's front clears its own after the ClientHello. A client past REALITY, whose keys every user of
+the node has, could open connections and send nothing more, each held until the client closed it: memory and
+conntrack entries no limit counts, since conn-limit counts a connection only once its UUID is read.
+
+- Hook in `proxy/vless/inbound/inbound.go`, `Process`: the deadline is set before `decryption.Handshake` instead of
+  after; it then covers both handshakes, and is cleared as before once the request header is read. The window now
+  holds the server's padding waits of VLESS Encryption too: that matters only with a handshake timeout of a few
+  seconds or less, not with the default.
+- Tests: `proxy/vless/inbound/deadline_test.go` (`go test ./proxy/vless/inbound/ -run
+  TestEncryptionHandshakeDeadline`): over raw TCP, unix, TLS and REALITY, a client that sends nothing is dropped at
+  the deadline; it hangs without the change. `transport/internet/reality/target_test.go`, `TestServerNameNotListed`:
+  the right keys with an SNI not in `serverNames` go to the target: §4 leaves that check as it was.
+- Upstream: the same change fits upstream as it is; until it takes it, keep the hook.
 
 ## Who pins it
 

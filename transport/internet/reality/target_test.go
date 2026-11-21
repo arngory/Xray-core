@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"io"
 	gonet "net"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,6 +101,67 @@ func TestTargetExtensions(t *testing.T) {
 				t.Fatalf("echo: %q, %v", got, err)
 			}
 		})
+	}
+}
+
+// TestServerNameNotListed: a client with the right keys and an SNI not in serverNames is the target's, not
+// REALITY's: the server hands the connection to the target and fails with "server name mismatch". The fork's
+// change (FORK.md, 4) leaves this check as it was.
+func TestServerNameNotListed(t *testing.T) {
+	target := tlsTarget(t, nil, false)
+	privateKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shortID := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	server := (&Config{
+		Dest:        target,
+		Type:        "tcp",
+		ServerNames: []string{"localhost"},
+		PrivateKey:  privateKey.Bytes(),
+		ShortIds:    [][]byte{shortID},
+	}).GetREALITYConfig()
+	waitDetected(t, server, "localhost 2")
+	client := &Config{
+		Fingerprint: "chrome",
+		ServerName:  "other.example",
+		PublicKey:   privateKey.PublicKey().Bytes(),
+		ShortId:     shortID,
+		SpiderX:     "/",
+	}
+
+	ln := listen(t)
+	serverErr := make(chan error, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		defer c.Close()
+		c.SetDeadline(time.Now().Add(10 * time.Second))
+		_, err = Server(c, server)
+		serverErr <- err
+	}()
+
+	c, err := gonet.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(10 * time.Second))
+	if conn, err := UClient(c, client, context.Background(), net.TCPDestination(net.LocalHostIP, 443)); err == nil {
+		conn.Close()
+		t.Error("the client took the target for REALITY")
+	}
+	c.Close()
+	select {
+	case err := <-serverErr:
+		if err == nil || !strings.Contains(err.Error(), "server name mismatch") {
+			t.Fatalf("server: %v, want server name mismatch", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("the server did not finish")
 	}
 }
 
