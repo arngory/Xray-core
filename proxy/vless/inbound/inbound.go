@@ -285,16 +285,18 @@ func (*Handler) Network() []net.Network {
 func (h *Handler) Process(ctx context.Context, network net.Network, connection stat.Connection, dispatch routing.Dispatcher) error {
 	iConn := stat.TryUnwrapStatsConn(connection)
 
+	// fork: the handshake's deadline from the start, VLESS Encryption's handshake included: with it set after,
+	// a client past REALITY or TLS that sent nothing more held the connection for good (FORK.md, 5).
+	sessionPolicy := h.policyManager.ForLevel(0)
+	if err := connection.SetReadDeadline(time.Now().Add(sessionPolicy.Timeouts.Handshake)); err != nil {
+		return errors.New("unable to set read deadline").Base(err)
+	}
+
 	if h.decryption != nil {
 		var err error
 		if connection, err = h.decryption.Handshake(connection, nil); err != nil {
 			return errors.New("ML-KEM-768 handshake failed").Base(err)
 		}
-	}
-
-	sessionPolicy := h.policyManager.ForLevel(0)
-	if err := connection.SetReadDeadline(time.Now().Add(sessionPolicy.Timeouts.Handshake)); err != nil {
-		return errors.New("unable to set read deadline").Base(err)
 	}
 
 	first := buf.FromBytes(make([]byte, buf.Size))
