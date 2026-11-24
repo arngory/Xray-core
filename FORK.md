@@ -1,6 +1,6 @@
 # What this fork carries
 
-The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.11.9** (`676eaf6`) plus the five changes
+The fork is upstream [XTLS/Xray-core](https://github.com/XTLS/Xray-core) **v26.11.9** (`676eaf6`) plus the six changes
 below (branch `raycontrol/v26.11.9`; the first three were written on v26.10.31, branch `raycontrol/v26.10.31`, and
 moved onto v26.11.9 without a conflict), for the exits of raycontrol (`inner` and REALITY). Each is written to be
 rebased: new files where it could be, and in upstream's files only the narrow hooks listed here. A hook is marked
@@ -167,6 +167,23 @@ conntrack entries no limit counts, since conn-limit counts a connection only onc
   the deadline; it hangs without the change. `transport/internet/reality/target_test.go`, `TestServerNameNotListed`:
   the right keys with an SNI not in `serverNames` go to the target: §4 leaves that check as it was.
 - Upstream: the same change fits upstream as it is; until it takes it, keep the hook.
+
+## 6. The Go memory limit from the cgroup
+
+Why: Go (1.27) reads its cgroup's `cpu.max`, not `memory.max`, and takes `GOMEMLIMIT` only from the environment.
+raycontrol gives each unit a memory limit as a share of the host's memory, which systemd recomputes when the host's
+size changes (raycontrol `docs/spec/memory-v1.md`); a number in the unit's environment would not follow it. Without a
+Go limit under the cgroup's, the heap grows to the kernel's limit and the kernel kills the process.
+
+- New: `common/memlimit` (a copy of niko-server's `nikoserver/memlimit`: the least `memory.max` and `memory.high` of
+  the process's cgroup and its ancestors, cgroup v2 then v1, by the mounts in `/proc/self/mountinfo`, and the host's
+  `MemTotal`) and `main/memlimit.go`.
+- Hook in `main/run.go`, `executeRun`: `setMemoryLimit()` after `printVersion()`. With `GOMEMLIMIT` set it does
+  nothing; without a cgroup limit below the host's memory it does nothing; else it sets `debug.SetMemoryLimit` to 7/8
+  of the less of `memory.high` and 15/16 of `memory.max`, 64 MiB at least, and prints one line with the figures.
+- Tests: `go test ./common/memlimit/ ./main/ -run 'TestRead|TestLimit|TestGoLimit|TestSetGoLimit|TestMemoryLine'`.
+- Upstream: golang/go#75164 would make the hook unneeded; until Go reads `memory.max` itself, keep it. Keep
+  `common/memlimit` the same as niko-server's: a fix in one goes into the other.
 
 ## Who pins it
 
